@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+local.settings.json
+*.log
+.DS_Store
+coverage/
+*.zip

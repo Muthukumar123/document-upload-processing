@@ -1,0 +1,10 @@
+{
+  "name": "document-upload-processing",
+  "private": true,
+  "workspaces": ["api", "frontend"],
+  "scripts": {
+    "build": "npm run build -w api && npm run build -w frontend",
+    "test": "npm run test -w api",
+    "lint": "npm run lint -w api && npm run lint -w frontend"
+  }
+}
