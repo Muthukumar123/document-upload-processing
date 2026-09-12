@@ -171,12 +171,12 @@ class CaseRepository:
         )
         self._connection.commit()
 
-    def get_audit_events(self, case_id: str) -> list[sqlite3.Row]:
+    def get_audit_events(self, case_id: str) -> list[dict[str, str]]:
         rows = self._connection.execute(
             "SELECT * FROM audit_events WHERE case_id = ? ORDER BY id",
             (case_id,),
         ).fetchall()
-        return list(rows)
+        return [dict(row) for row in rows]
 
 
 class ObservabilityTracker:
@@ -248,6 +248,18 @@ class BatchProcessor:
             return "duplicate"
 
         if not self.repository.acquire_processing_lock(message.idempotency_key):
+            if message.attempt >= self.max_retries:
+                self.repository.upsert_case(message.case_id, "failed", message.document_id)
+                self.repository.mark_processed(message.idempotency_key)
+                self.repository.add_audit_event(
+                    message.case_id,
+                    message.document_id,
+                    "dead_lettered",
+                    "lock contention retries exhausted",
+                )
+                self.observability.emit("dead_lettered", case_id=message.case_id)
+                on_dlq(message, "lock_contention_retries_exhausted")
+                return "dead_lettered"
             self.repository.add_audit_event(
                 message.case_id,
                 message.document_id,
@@ -255,7 +267,7 @@ class BatchProcessor:
                 "already in progress; rescheduled",
             )
             self.observability.emit("lock_contention", case_id=message.case_id)
-            on_reschedule(message)
+            on_reschedule(replace(message, attempt=message.attempt + 1))
             return "lock_contention"
 
         try:

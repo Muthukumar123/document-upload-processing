@@ -132,6 +132,30 @@ class DocumentPipelineTests(unittest.TestCase):
         self.repo.acquire_processing_lock = original_lock
         self.assertEqual(process_batch(queue, processor), ["processed"])
 
+    def test_lock_contention_has_dead_letter_cap(self) -> None:
+        queue = ServiceBusQueue()
+        storage = BlobStorageClient()
+        processor = BatchProcessor(
+            self.repo,
+            self.validator,
+            storage,
+            self.observability,
+            max_retries=1,
+        )
+        self.repo.acquire_processing_lock = lambda _key: False  # type: ignore[method-assign]
+        upload_document(
+            {
+                "case_id": "CASE-LOCK-DLQ",
+                "document_id": "DOC-LOCK-DLQ",
+                "content": b"locked",
+                "metadata": {"content_type": "application/pdf"},
+            },
+            queue,
+        )
+        self.assertEqual(process_batch(queue, processor), ["lock_contention"])
+        self.assertEqual(process_batch(queue, processor), ["dead_lettered"])
+        self.assertEqual(len(queue.dlq), 1)
+
     def test_upload_document_validates_request_shape(self) -> None:
         queue = ServiceBusQueue()
         with self.assertRaises(ValidationError):
