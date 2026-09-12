@@ -155,6 +155,9 @@ class DocumentPipelineTests(unittest.TestCase):
         self.assertEqual(process_batch(queue, processor), ["lock_contention"])
         self.assertEqual(process_batch(queue, processor), ["dead_lettered"])
         self.assertEqual(len(queue.dlq), 1)
+        self.assertEqual(self.repo.get_case_status("CASE-LOCK-DLQ"), "failed")
+        events = self.repo.get_audit_events("CASE-LOCK-DLQ")
+        self.assertEqual(events[-1]["event_type"], "dead_lettered")
 
     def test_upload_document_validates_request_shape(self) -> None:
         queue = ServiceBusQueue()
@@ -223,6 +226,13 @@ class DocumentPipelineTests(unittest.TestCase):
         )
         queued = queue.dequeue_batch(1)[0]
         self.assertEqual(queued.content, b"bytearray-payload")
+
+    def test_blob_upload_is_idempotent_for_existing_document(self) -> None:
+        storage = BlobStorageClient()
+        url_one = storage.upload("DOC-IDEMPOTENT", b"first")
+        url_two = storage.upload("DOC-IDEMPOTENT", b"second")
+        self.assertEqual(url_one, url_two)
+        self.assertEqual(storage.get("DOC-IDEMPOTENT"), b"first")
 
 
 if __name__ == "__main__":

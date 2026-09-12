@@ -54,6 +54,8 @@ class BlobStorageClient:
     def upload(self, document_id: str, content: bytes) -> str:
         if not content:
             raise TransientProcessingError("unable to upload empty content")
+        if document_id in self._blobs:
+            return f"blob://documents/{document_id}"
         self._blobs[document_id] = content
         return f"blob://documents/{document_id}"
 
