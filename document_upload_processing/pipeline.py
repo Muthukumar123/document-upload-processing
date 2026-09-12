@@ -208,7 +208,8 @@ class ServiceBusQueue:
         self.enqueue(replace(message, attempt=message.attempt + 1))
 
     def dead_letter(self, message: DocumentMessage, reason: str) -> None:
-        self._dlq.append((message, reason))
+        normalized = replace(message, metadata=dict(message.metadata))
+        self._dlq.append((normalized, reason))
 
     @property
     def dlq(self) -> list[tuple[DocumentMessage, str]]:
@@ -263,7 +264,13 @@ class BatchProcessor:
                     "lock contention retries exhausted",
                 )
                 self.observability.emit("dead_lettered", case_id=message.case_id)
-                on_dlq(message, "lock_contention_retries_exhausted")
+                on_dlq(
+                    replace(
+                        message,
+                        metadata={**message.metadata, "_lock_retries": str(lock_retries)},
+                    ),
+                    f"lock_contention_retries_exhausted:{lock_retries}",
+                )
                 return "dead_lettered"
             self.repository.add_audit_event(
                 message.case_id,

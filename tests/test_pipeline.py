@@ -155,6 +155,7 @@ class DocumentPipelineTests(unittest.TestCase):
         self.assertEqual(process_batch(queue, processor), ["lock_contention"])
         self.assertEqual(process_batch(queue, processor), ["dead_lettered"])
         self.assertEqual(len(queue.dlq), 1)
+        self.assertEqual(queue.dlq[0][0].metadata["_lock_retries"], "1")
         self.assertEqual(self.repo.get_case_status("CASE-LOCK-DLQ"), "failed")
         events = self.repo.get_audit_events("CASE-LOCK-DLQ")
         self.assertEqual(events[-1]["event_type"], "dead_lettered")
