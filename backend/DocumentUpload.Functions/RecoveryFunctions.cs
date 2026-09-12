@@ -16,52 +16,39 @@ public class RecoveryFunctions
         FunctionContext context)
     {
         var log = context.GetLogger("RequeueStuckDocuments");
-        var staleSeconds = int.TryParse(Environment.GetEnvironmentVariable("RECOVERY_STALE_SECONDS"), out var configured)
-            ? Math.Max(configured, 60)
-            : 90;
+
+        // Service Bus owns normal QUEUED delivery and FAILED redelivery. Recovery is only for
+        // genuinely orphaned PROCESSING records after the normal lock/auto-renewal window.
+        var staleSeconds = int.TryParse(Environment.GetEnvironmentVariable("RECOVERY_STALE_SECONDS"), out var configuredStale)
+            ? Math.Max(configuredStale, 660)
+            : 720;
+        var maxAttempts = int.TryParse(Environment.GetEnvironmentVariable("RECOVERY_MAX_ATTEMPTS"), out var configuredAttempts)
+            ? Math.Clamp(configuredAttempts, 1, 20)
+            : 5;
 
         var candidates = new List<RecoveryCandidate>();
 
         await using (var connection = new SqlConnection(Settings.Sql))
         {
             await connection.OpenAsync();
-            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
 
             await using var command = new SqlCommand(@"
-;WITH stale AS
-(
-    SELECT TOP (20)
-        DocumentId,
-        BatchId,
-        BlobName,
-        BlobVersionId,
-        Sha256,
-        AttemptCount
-    FROM dbo.DocumentUpload WITH (UPDLOCK, READPAST, ROWLOCK)
-    WHERE
-        Sha256 IS NOT NULL
-        AND (
-            (Status IN ('PROCESSING','QUEUED') AND UpdatedAt < DATEADD(second, -@staleSeconds, SYSUTCDATETIME()))
-            OR
-            (Status = 'FAILED' AND UpdatedAt < DATEADD(second, -@failedSeconds, SYSUTCDATETIME()))
-        )
-    ORDER BY UpdatedAt
-)
-UPDATE stale
-SET
-    Status = 'FAILED',
-    LastError = 'Recovery watchdog re-queued stale document',
-    UpdatedAt = SYSUTCDATETIME()
-OUTPUT
-    inserted.DocumentId,
-    inserted.BatchId,
-    inserted.BlobName,
-    inserted.BlobVersionId,
-    inserted.Sha256,
-    inserted.AttemptCount;", connection, transaction);
-
+SELECT TOP (20)
+    DocumentId,
+    BatchId,
+    BlobName,
+    BlobVersionId,
+    Sha256,
+    AttemptCount
+FROM dbo.DocumentUpload WITH (READPAST)
+WHERE
+    Status = 'PROCESSING'
+    AND Sha256 IS NOT NULL
+    AND AttemptCount < @maxAttempts
+    AND UpdatedAt < DATEADD(second, -@staleSeconds, SYSUTCDATETIME())
+ORDER BY UpdatedAt;", connection);
+            command.Parameters.AddWithValue("@maxAttempts", maxAttempts);
             command.Parameters.AddWithValue("@staleSeconds", staleSeconds);
-            command.Parameters.AddWithValue("@failedSeconds", Math.Max(staleSeconds * 2, 180));
 
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -74,59 +61,99 @@ OUTPUT
                     reader.GetString(4),
                     reader.GetInt32(5)));
             }
-
-            await transaction.CommitAsync();
         }
 
-        if (candidates.Count == 0)
-            return;
-
-        await using var serviceBus = new ServiceBusClient(Settings.ServiceBus);
-        var sender = serviceBus.CreateSender(Settings.Queue);
-
-        foreach (var candidate in candidates)
+        if (candidates.Count > 0)
         {
-            try
-            {
-                var messageBody = new DocumentMessage(
-                    candidate.BatchId,
-                    candidate.DocumentId,
-                    candidate.BlobName,
-                    candidate.BlobVersionId,
-                    candidate.Sha256);
+            await using var serviceBus = new ServiceBusClient(Settings.ServiceBus);
+            var sender = serviceBus.CreateSender(Settings.Queue);
 
-                var message = new ServiceBusMessage(JsonSerializer.Serialize(messageBody, JsonOptions))
+            foreach (var candidate in candidates)
+            {
+                try
                 {
-                    // Recovery must not reuse the original deterministic MessageId because
-                    // Service Bus duplicate detection would discard it inside the 1-hour window.
-                    MessageId = $"{candidate.DocumentId}:recovery:{Guid.NewGuid():N}",
-                    Subject = "document-recovery"
-                };
+                    var messageBody = new DocumentMessage(
+                        candidate.BatchId,
+                        candidate.DocumentId,
+                        candidate.BlobName,
+                        candidate.BlobVersionId,
+                        candidate.Sha256);
 
-                await sender.SendMessageAsync(message);
+                    // Deterministic per recovery attempt: different from the original document MessageId,
+                    // but repeated watchdog cycles for the same attempt are suppressed by Service Bus
+                    // duplicate detection if the send succeeds and the SQL status update does not.
+                    var recoveryMessageId = $"{candidate.DocumentId}:recovery:{candidate.AttemptCount}";
+                    var message = new ServiceBusMessage(JsonSerializer.Serialize(messageBody, JsonOptions))
+                    {
+                        MessageId = recoveryMessageId,
+                        Subject = "document-recovery"
+                    };
 
-                await using var connection = new SqlConnection(Settings.Sql);
-                await connection.OpenAsync();
-                await using var command = new SqlCommand(@"
+                    await sender.SendMessageAsync(message);
+
+                    await using var connection = new SqlConnection(Settings.Sql);
+                    await connection.OpenAsync();
+                    await using var command = new SqlCommand(@"
 UPDATE dbo.DocumentUpload
-SET LastError='Recovery watchdog re-queued stale document', UpdatedAt=SYSUTCDATETIME()
-WHERE DocumentId=@documentId;
-INSERT dbo.AuditEvent(DocumentId,EventType,Details)
-VALUES(@documentId,'RECOVERY_REQUEUED',@details);", connection);
-                command.Parameters.AddWithValue("@documentId", candidate.DocumentId);
-                command.Parameters.AddWithValue("@details", $"Recovered stale document after attempt {candidate.AttemptCount}; recovery message uses unique MessageId.");
-                await command.ExecuteNonQueryAsync();
+SET Status='QUEUED',
+    LastError='Recovery watchdog re-queued orphaned PROCESSING document',
+    UpdatedAt=SYSUTCDATETIME()
+WHERE DocumentId=@documentId
+  AND Status='PROCESSING'
+  AND AttemptCount=@attemptCount;
+IF @@ROWCOUNT = 1
+BEGIN
+    INSERT dbo.AuditEvent(DocumentId,EventType,Details)
+    VALUES(@documentId,'RECOVERY_REQUEUED',@details);
+END", connection);
+                    command.Parameters.AddWithValue("@documentId", candidate.DocumentId);
+                    command.Parameters.AddWithValue("@attemptCount", candidate.AttemptCount);
+                    command.Parameters.AddWithValue("@details", $"Recovered orphaned PROCESSING document after attempt {candidate.AttemptCount}; MessageId={recoveryMessageId}.");
+                    var changed = await command.ExecuteNonQueryAsync();
 
-                log.LogWarning(
-                    "Re-queued stale document {DocumentId} from batch {BatchId} after attempt {AttemptCount}",
-                    candidate.DocumentId,
-                    candidate.BatchId,
-                    candidate.AttemptCount);
+                    log.LogWarning(
+                        "Recovery sent for stale document {DocumentId} from batch {BatchId} after attempt {AttemptCount}; SQL statements affected {AffectedRows}",
+                        candidate.DocumentId,
+                        candidate.BatchId,
+                        candidate.AttemptCount,
+                        changed);
+                }
+                catch (Exception ex)
+                {
+                    // Keep PROCESSING unchanged. Because UpdatedAt is not touched, the next watchdog
+                    // cycle can safely retry the same deterministic recovery MessageId.
+                    log.LogError(ex, "Failed to re-queue stale PROCESSING document {DocumentId}", candidate.DocumentId);
+                }
             }
-            catch (Exception ex)
+        }
+
+        // Do not manufacture additional Service Bus retries after the configured recovery ceiling.
+        // Leave a terminal FAILED state for reconciliation/operations instead of an infinite loop.
+        await using (var connection = new SqlConnection(Settings.Sql))
+        {
+            await connection.OpenAsync();
+            await using var command = new SqlCommand(@"
+UPDATE dbo.DocumentUpload
+SET Status='FAILED',
+    LastError='Recovery attempt ceiling reached for orphaned PROCESSING document',
+    UpdatedAt=SYSUTCDATETIME()
+OUTPUT inserted.DocumentId
+WHERE Status='PROCESSING'
+  AND AttemptCount >= @maxAttempts
+  AND UpdatedAt < DATEADD(second, -@staleSeconds, SYSUTCDATETIME());", connection);
+            command.Parameters.AddWithValue("@maxAttempts", maxAttempts);
+            command.Parameters.AddWithValue("@staleSeconds", staleSeconds);
+
+            var terminalIds = new List<Guid>();
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) terminalIds.Add(reader.GetGuid(0));
+
+            foreach (var documentId in terminalIds)
             {
-                // The document remains FAILED, so a later watchdog cycle can try again.
-                log.LogError(ex, "Failed to re-queue stale document {DocumentId}", candidate.DocumentId);
+                log.LogError(
+                    "Recovery ceiling reached for document {DocumentId}; marked FAILED after {MaxAttempts} processing attempts",
+                    documentId,
+                    maxAttempts);
             }
         }
     }
