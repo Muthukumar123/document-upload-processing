@@ -9,12 +9,42 @@ The development/test architecture has been validated successfully on the current
 **Latest validated result:**
 
 - **150 documents**
-- **153 rows x 10 columns per document**
+- **153 data rows x 10 columns per document**
 - **22,950 cases**
 - **42.96 seconds end-to-end**
 - **0 failed documents**
 - **0 dead-lettered documents**
 - latest validated code baseline: `dda4c9d` (`Optimize document processing hot paths`)
+
+### Benchmark workload terminology: documents are not cases
+
+The benchmark uploads **150 Excel documents**. It does not upload 150 cases.
+
+Each synthetic Excel document contains **153 non-header data rows**. In this benchmark, **each non-empty data row becomes one case** in Azure SQL. The 10 columns are fields belonging to that case and do not multiply the case count.
+
+Therefore:
+
+```text
+150 documents
+x 153 data rows per document
+= 22,950 cases
+```
+
+So `150 documents / 22,950 cases` means that **150 uploaded files produced 22,950 row-level case records in total**.
+
+Examples:
+
+| Documents | Rows per document | Calculation | Cases |
+|---:|---:|---:|---:|
+| 1 | 153 | 1 x 153 | 153 |
+| 50 | 153 | 50 x 153 | 7,650 |
+| 3 batches x 50 | 153 | 3 x 50 x 153 | 22,950 |
+| 150 | 153 | 150 x 153 | 22,950 |
+| 153 | 153 | 153 x 153 | 23,409 |
+
+**153 rows per document is a synthetic load-test setting, not a production rule.** Real documents may contain fewer or more business rows, so real case volume depends on the actual non-empty rows processed from each document.
+
+See [`docs/benchmark-workload-model.md`](docs/benchmark-workload-model.md) for the authoritative explanation of document, row, column and case counts used by the benchmark.
 
 Compared with the original 153-document baseline of 168.53 seconds, normalized case throughput improved from approximately **138.9 cases/sec** to **534.2 cases/sec**: about **3.85x throughput**, with approximately **74% lower normalized time per document**.
 
@@ -102,6 +132,8 @@ The current configuration is intentionally cost-sensitive. More expensive SQL/Fu
 | 3 concurrent batches x 50 | 150 total | 22,950 total | ~50.20s | 457.2 | 3/3 PASS |
 | **Current optimized single batch** | **150** | **22,950** | **42.96s** | **534.2** | **PASS** |
 
+For every 150-document benchmark shown above, the case count is based on the synthetic workload formula `150 documents x 153 rows/document = 22,950 cases`.
+
 The latest run uploaded and queued all 150 documents in **15.31 seconds**. This is important when considering a future 10-15 second end-to-end target: server scaling alone cannot remove upload/client/network time.
 
 ## Repository layout
@@ -112,6 +144,7 @@ The latest run uploaded and queued all 150 documents in **15.31 seconds**. This 
 - `sql/` durable Azure SQL schema
 - `infra/` Azure Bicep
 - `docs/architecture.md` runtime architecture and reliability model
+- `docs/benchmark-workload-model.md` authoritative benchmark document/row/case definitions and calculations
 - `docs/project-conclusion.md` full project report, facts/figures, scaling projections and conclusion
 - `docs/enterprise-architecture-and-benchmarking.md` enterprise architecture and benchmark maturity assessment
 - `.github/workflows/` CI and Azure deployment workflow
@@ -129,7 +162,7 @@ python tests/load_test.py \
   --timeout-minutes 30
 ```
 
-Each generated workbook currently contains 153 data rows and 10 columns, so a 150-document run expects exactly **22,950 cases**.
+Each generated workbook currently contains 153 data rows and 10 columns. Each non-empty data row represents one case, so a 150-document run expects exactly `150 x 153 = 22,950` cases. The 10 columns are attributes within each case and are not additional cases.
 
 The prepare endpoint currently accepts at most **200 files in one request**. A future 500+ document user-visible job should use one logical batch with smaller preparation/upload chunks rather than uncontrolled fan-out.
 
