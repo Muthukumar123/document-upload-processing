@@ -8,6 +8,7 @@ from document_upload_processing import (
     ObservabilityTracker,
     ServiceBusQueue,
     TransientProcessingError,
+    ValidationError,
     ValidationService,
     process_batch,
     upload_document,
@@ -86,6 +87,7 @@ class DocumentPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(process_batch(queue, processor), ["retry"])
+        self.assertEqual(process_batch(queue, processor), ["retry"])
         self.assertEqual(process_batch(queue, processor), ["dead_lettered"])
         self.assertEqual(len(queue.dlq), 1)
         self.assertEqual(self.repo.get_case_status("CASE-003"), "failed")
@@ -108,6 +110,11 @@ class DocumentPipelineTests(unittest.TestCase):
         self.assertEqual(process_batch(queue, processor), ["validation_failed"])
         self.assertEqual(len(queue.dlq), 1)
         self.assertEqual(self.repo.get_case_status("CASE-004"), "validation_failed")
+
+    def test_upload_document_validates_request_shape(self) -> None:
+        queue = ServiceBusQueue()
+        with self.assertRaises(ValidationError):
+            upload_document({"case_id": "CASE-005"}, queue)
 
 
 if __name__ == "__main__":

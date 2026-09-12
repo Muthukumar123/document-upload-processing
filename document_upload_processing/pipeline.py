@@ -75,6 +75,11 @@ class CaseRepository:
                 processed_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS processing_locks (
+                idempotency_key TEXT PRIMARY KEY,
+                locked_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS audit_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 case_id TEXT NOT NULL,
@@ -101,6 +106,24 @@ class CaseRepository:
             VALUES (?, ?)
             """,
             (idempotency_key, utc_now()),
+        )
+        self._connection.commit()
+
+    def acquire_processing_lock(self, idempotency_key: str) -> bool:
+        cursor = self._connection.execute(
+            """
+            INSERT OR IGNORE INTO processing_locks (idempotency_key, locked_at)
+            VALUES (?, ?)
+            """,
+            (idempotency_key, utc_now()),
+        )
+        self._connection.commit()
+        return cursor.rowcount == 1
+
+    def release_processing_lock(self, idempotency_key: str) -> None:
+        self._connection.execute(
+            "DELETE FROM processing_locks WHERE idempotency_key = ?",
+            (idempotency_key,),
         )
         self._connection.commit()
 
@@ -214,11 +237,22 @@ class BatchProcessor:
             self.observability.emit("duplicate_skipped", case_id=message.case_id)
             return "duplicate"
 
+        if not self.repository.acquire_processing_lock(message.idempotency_key):
+            self.repository.add_audit_event(
+                message.case_id,
+                message.document_id,
+                "duplicate_skipped",
+                "already in progress",
+            )
+            self.observability.emit("duplicate_skipped", case_id=message.case_id)
+            return "duplicate"
+
         try:
             self.validator.validate(message)
             blob_url = self.blob_storage.upload(message.document_id, message.content)
         except ValidationError as exc:
             self.repository.upsert_case(message.case_id, "validation_failed", message.document_id)
+            self.repository.mark_processed(message.idempotency_key)
             self.repository.add_audit_event(
                 message.case_id,
                 message.document_id,
@@ -227,10 +261,12 @@ class BatchProcessor:
             )
             self.observability.emit("validation_failed", case_id=message.case_id)
             on_dlq(message, f"validation_error:{exc}")
+            self.repository.release_processing_lock(message.idempotency_key)
             return "validation_failed"
         except TransientProcessingError as exc:
-            if message.attempt + 1 >= self.max_retries:
+            if message.attempt >= self.max_retries:
                 self.repository.upsert_case(message.case_id, "failed", message.document_id)
+                self.repository.mark_processed(message.idempotency_key)
                 self.repository.add_audit_event(
                     message.case_id,
                     message.document_id,
@@ -239,6 +275,7 @@ class BatchProcessor:
                 )
                 self.observability.emit("dead_lettered", case_id=message.case_id)
                 on_dlq(message, f"retries_exhausted:{exc}")
+                self.repository.release_processing_lock(message.idempotency_key)
                 return "dead_lettered"
 
             self.repository.add_audit_event(
@@ -249,7 +286,11 @@ class BatchProcessor:
             )
             self.observability.emit("retry_scheduled", case_id=message.case_id)
             on_retry(message)
+            self.repository.release_processing_lock(message.idempotency_key)
             return "retry"
+        except Exception:
+            self.repository.release_processing_lock(message.idempotency_key)
+            raise
 
         self.repository.upsert_case(message.case_id, "processed", message.document_id)
         self.repository.mark_processed(message.idempotency_key)
@@ -260,15 +301,32 @@ class BatchProcessor:
             blob_url,
         )
         self.observability.emit("processed", case_id=message.case_id)
+        self.repository.release_processing_lock(message.idempotency_key)
         return "processed"
 
 
 def upload_document(request: dict, queue: ServiceBusQueue) -> DocumentMessage:
+    """Validate upload input and enqueue a document for batch processing."""
+    required_fields = ("case_id", "document_id", "content")
+    missing_fields = [field for field in required_fields if field not in request]
+    if missing_fields:
+        raise ValidationError(f"missing required fields: {', '.join(missing_fields)}")
+
+    metadata = request.get("metadata", {})
+    if not isinstance(metadata, dict):
+        raise ValidationError("metadata must be a dictionary")
+
+    content = request["content"]
+    if isinstance(content, bytearray):
+        content = bytes(content)
+    if not isinstance(content, bytes):
+        raise ValidationError("content must be bytes")
+
     message = DocumentMessage(
         case_id=request["case_id"],
         document_id=request["document_id"],
-        content=request["content"],
-        metadata=request.get("metadata", {}),
+        content=content,
+        metadata=metadata,
     )
     queue.enqueue(message)
     return message
