@@ -116,6 +116,17 @@ class DocumentPipelineTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             upload_document({"case_id": "CASE-005"}, queue)
 
+        with self.assertRaises(ValidationError):
+            upload_document(
+                {
+                    "case_id": "CASE-006",
+                    "document_id": "DOC-006",
+                    "content": b"data",
+                    "metadata": "not-a-dict",
+                },
+                queue,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

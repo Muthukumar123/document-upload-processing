@@ -207,6 +207,8 @@ class ServiceBusQueue:
 
 
 class BatchProcessor:
+    """Processes queued documents; max_retries is retries after the initial attempt."""
+
     def __init__(
         self,
         repository: CaseRepository,
@@ -307,12 +309,12 @@ class BatchProcessor:
 
 def upload_document(request: dict, queue: ServiceBusQueue) -> DocumentMessage:
     """Validate upload input and enqueue a document for batch processing."""
-    required_fields = ("case_id", "document_id", "content")
+    required_fields = ("case_id", "document_id", "content", "metadata")
     missing_fields = [field for field in required_fields if field not in request]
     if missing_fields:
         raise ValidationError(f"missing required fields: {', '.join(missing_fields)}")
 
-    metadata = request.get("metadata", {})
+    metadata = request["metadata"]
     if not isinstance(metadata, dict):
         raise ValidationError("metadata must be a dictionary")
 
