@@ -210,6 +210,20 @@ class DocumentPipelineTests(unittest.TestCase):
         queued = queue.dequeue_batch(1)[0]
         self.assertEqual(queued.metadata["content_type"], "application/pdf")
 
+    def test_upload_document_accepts_bytearray_content(self) -> None:
+        queue = ServiceBusQueue()
+        upload_document(
+            {
+                "case_id": "CASE-010",
+                "document_id": "DOC-010",
+                "content": bytearray(b"bytearray-payload"),
+                "metadata": {"content_type": "application/pdf"},
+            },
+            queue,
+        )
+        queued = queue.dequeue_batch(1)[0]
+        self.assertEqual(queued.content, b"bytearray-payload")
+
 
 if __name__ == "__main__":
     unittest.main()

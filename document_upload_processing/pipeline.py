@@ -248,7 +248,11 @@ class BatchProcessor:
             return "duplicate"
 
         if not self.repository.acquire_processing_lock(message.idempotency_key):
-            if message.attempt >= self.max_retries:
+            try:
+                lock_retries = int(message.metadata.get("_lock_retries", "0"))
+            except ValueError:
+                lock_retries = 0
+            if lock_retries >= self.max_retries:
                 self.repository.upsert_case(message.case_id, "failed", message.document_id)
                 self.repository.add_audit_event(
                     message.case_id,
@@ -266,7 +270,12 @@ class BatchProcessor:
                 "already in progress; rescheduled",
             )
             self.observability.emit("lock_contention", case_id=message.case_id)
-            on_reschedule(replace(message, attempt=message.attempt + 1))
+            on_reschedule(
+                replace(
+                    message,
+                    metadata={**message.metadata, "_lock_retries": str(lock_retries + 1)},
+                )
+            )
             return "lock_contention"
 
         try:
@@ -313,8 +322,8 @@ class BatchProcessor:
             self.repository.release_processing_lock(message.idempotency_key)
             raise
 
-        self.repository.upsert_case(message.case_id, "processed", message.document_id)
         self.repository.mark_processed(message.idempotency_key)
+        self.repository.upsert_case(message.case_id, "processed", message.document_id)
         self.repository.add_audit_event(
             message.case_id,
             message.document_id,
