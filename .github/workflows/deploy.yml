@@ -1,0 +1,79 @@
+name: Deploy Azure
+on:
+  workflow_dispatch:
+    inputs:
+      resourceGroup:
+        description: Azure resource group
+        required: true
+        default: rg-document-upload-dev
+      location:
+        description: Azure region
+        required: true
+        default: westeurope
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: azure-dev
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build and test
+        run: npm install && npm run build && npm run test
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Create resource group
+        run: az group create -n "${{ inputs.resourceGroup }}" -l "${{ inputs.location }}"
+      - name: Deploy infrastructure
+        id: infra
+        shell: bash
+        env:
+          SQL_ADMIN_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+        run: |
+          az deployment group create -g "${{ inputs.resourceGroup }}" -f infra/main.bicep -p envName=dev sqlAdminPassword="$SQL_ADMIN_PASSWORD" > deployment.json
+          echo "function=$(jq -r '.properties.outputs.functionAppName.value' deployment.json)" >> "$GITHUB_OUTPUT"
+          echo "api=$(jq -r '.properties.outputs.functionBaseUrl.value' deployment.json)" >> "$GITHUB_OUTPUT"
+          echo "storage=$(jq -r '.properties.outputs.storageAccountName.value' deployment.json)" >> "$GITHUB_OUTPUT"
+          echo "site=$(jq -r '.properties.outputs.staticWebUrl.value' deployment.json)" >> "$GITHUB_OUTPUT"
+          echo "sqlserver=$(jq -r '.properties.outputs.sqlServerName.value' deployment.json)" >> "$GITHUB_OUTPUT"
+          echo "sqldb=$(jq -r '.properties.outputs.sqlDatabaseName.value' deployment.json)" >> "$GITHUB_OUTPUT"
+      - name: Apply SQL schema
+        shell: bash
+        env:
+          SQL_ADMIN_PASSWORD: ${{ secrets.SQL_ADMIN_PASSWORD }}
+        run: |
+          RUNNER_IP=$(curl -fsS https://api.ipify.org)
+          az sql server firewall-rule create -g "${{ inputs.resourceGroup }}" -s "${{ steps.infra.outputs.sqlserver }}" -n github-runner --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP"
+          cleanup() { az sql server firewall-rule delete -g "${{ inputs.resourceGroup }}" -s "${{ steps.infra.outputs.sqlserver }}" -n github-runner || true; }
+          trap cleanup EXIT
+          docker run --rm -e SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" -v "$PWD/sql:/scripts:ro" mcr.microsoft.com/mssql-tools /opt/mssql-tools18/bin/sqlcmd -S "${{ steps.infra.outputs.sqlserver }}.database.windows.net" -d "${{ steps.infra.outputs.sqldb }}" -U docadmin -N -i /scripts/schema.sql
+      - name: Package Functions
+        shell: bash
+        run: |
+          cd api
+          npm install --omit=dev --workspaces=false
+          zip -qr ../function.zip dist host.json package.json node_modules
+      - name: Deploy Functions
+        run: az functionapp deployment source config-zip -g "${{ inputs.resourceGroup }}" -n "${{ steps.infra.outputs.function }}" --src function.zip
+      - name: Build React for deployed API
+        env:
+          VITE_API_BASE_URL: ${{ steps.infra.outputs.api }}
+        run: npm run build -w frontend
+      - name: Publish React site
+        shell: bash
+        run: |
+          ACCOUNT_KEY=$(az storage account keys list -g "${{ inputs.resourceGroup }}" -n "${{ steps.infra.outputs.storage }}" --query '[0].value' -o tsv)
+          az storage blob upload-batch --account-name "${{ steps.infra.outputs.storage }}" --account-key "$ACCOUNT_KEY" -s frontend/dist -d '$web' --overwrite
+      - name: Deployment summary
+        run: |
+          echo "### Document Upload deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Web: ${{ steps.infra.outputs.site }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- API: ${{ steps.infra.outputs.api }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Function App: ${{ steps.infra.outputs.function }}" >> "$GITHUB_STEP_SUMMARY"
