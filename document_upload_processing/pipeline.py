@@ -243,11 +243,12 @@ class BatchProcessor:
             self.repository.add_audit_event(
                 message.case_id,
                 message.document_id,
-                "duplicate_skipped",
-                "already in progress",
+                "lock_contention",
+                "already in progress; rescheduled",
             )
-            self.observability.emit("duplicate_skipped", case_id=message.case_id)
-            return "duplicate"
+            self.observability.emit("lock_contention", case_id=message.case_id)
+            on_retry(message)
+            return "lock_contention"
 
         try:
             self.validator.validate(message)
@@ -317,6 +318,8 @@ def upload_document(request: dict, queue: ServiceBusQueue) -> DocumentMessage:
     metadata = request["metadata"]
     if not isinstance(metadata, dict):
         raise ValidationError("metadata must be a dictionary")
+    if not all(isinstance(key, str) and isinstance(value, str) for key, value in metadata.items()):
+        raise ValidationError("metadata keys and values must be strings")
 
     content = request["content"]
     if isinstance(content, bytearray):

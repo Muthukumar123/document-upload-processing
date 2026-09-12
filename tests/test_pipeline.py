@@ -111,6 +111,27 @@ class DocumentPipelineTests(unittest.TestCase):
         self.assertEqual(len(queue.dlq), 1)
         self.assertEqual(self.repo.get_case_status("CASE-004"), "validation_failed")
 
+    def test_lock_contention_requeues_message(self) -> None:
+        queue = ServiceBusQueue()
+        storage = BlobStorageClient()
+        processor = BatchProcessor(self.repo, self.validator, storage, self.observability)
+        original_lock = self.repo.acquire_processing_lock
+        self.repo.acquire_processing_lock = lambda _key: False  # type: ignore[method-assign]
+
+        upload_document(
+            {
+                "case_id": "CASE-LOCK",
+                "document_id": "DOC-LOCK",
+                "content": b"locked",
+                "metadata": {"content_type": "application/pdf"},
+            },
+            queue,
+        )
+
+        self.assertEqual(process_batch(queue, processor), ["lock_contention"])
+        self.repo.acquire_processing_lock = original_lock
+        self.assertEqual(process_batch(queue, processor), ["processed"])
+
     def test_upload_document_validates_request_shape(self) -> None:
         queue = ServiceBusQueue()
         with self.assertRaises(ValidationError):
@@ -123,6 +144,17 @@ class DocumentPipelineTests(unittest.TestCase):
                     "document_id": "DOC-006",
                     "content": b"data",
                     "metadata": "not-a-dict",
+                },
+                queue,
+            )
+
+        with self.assertRaises(ValidationError):
+            upload_document(
+                {
+                    "case_id": "CASE-007",
+                    "document_id": "DOC-007",
+                    "content": b"data",
+                    "metadata": {"content_type": 1},
                 },
                 queue,
             )
