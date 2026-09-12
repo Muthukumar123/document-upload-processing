@@ -63,7 +63,7 @@ jobs:
           az sql server firewall-rule create -g "${{ inputs.resourceGroup }}" -s "${{ steps.infra.outputs.sqlserver }}" -n github-runner --start-ip-address "$RUNNER_IP" --end-ip-address "$RUNNER_IP"
           cleanup() { az sql server firewall-rule delete -g "${{ inputs.resourceGroup }}" -s "${{ steps.infra.outputs.sqlserver }}" -n github-runner || true; }
           trap cleanup EXIT
-          docker run --rm -e SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" -v "$PWD/sql:/scripts:ro" mcr.microsoft.com/mssql-tools /opt/mssql-tools18/bin/sqlcmd -S "${{ steps.infra.outputs.sqlserver }}.database.windows.net" -d "${{ steps.infra.outputs.sqldb }}" -U docadmin -N -i /scripts/schema.sql
+          docker run --rm -e SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" -v "$PWD/sql:/scripts:ro" mcr.microsoft.com/mssql-tools /opt/mssql-tools/bin/sqlcmd -S "${{ steps.infra.outputs.sqlserver }}.database.windows.net" -d "${{ steps.infra.outputs.sqldb }}" -U docadmin -N -i /scripts/schema.sql
       - name: Package Functions
         run: cd backend/publish && zip -qr ../../function.zip .
       - name: Deploy Functions
