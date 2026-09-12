@@ -228,6 +228,7 @@ class BatchProcessor:
         message: DocumentMessage,
         on_retry: Callable[[DocumentMessage], None],
         on_dlq: Callable[[DocumentMessage, str], None],
+        on_reschedule: Callable[[DocumentMessage], None],
     ) -> str:
         if self.repository.is_processed(message.idempotency_key):
             self.repository.add_audit_event(
@@ -247,7 +248,7 @@ class BatchProcessor:
                 "already in progress; rescheduled",
             )
             self.observability.emit("lock_contention", case_id=message.case_id)
-            on_retry(message)
+            on_reschedule(message)
             return "lock_contention"
 
         try:
@@ -326,12 +327,14 @@ def upload_document(request: dict, queue: ServiceBusQueue) -> DocumentMessage:
         content = bytes(content)
     if not isinstance(content, bytes):
         raise ValidationError("content must be bytes")
+    if not isinstance(request["case_id"], str) or not isinstance(request["document_id"], str):
+        raise ValidationError("case_id and document_id must be strings")
 
     message = DocumentMessage(
         case_id=request["case_id"],
         document_id=request["document_id"],
         content=content,
-        metadata=metadata,
+        metadata=dict(metadata),
     )
     queue.enqueue(message)
     return message
@@ -348,6 +351,7 @@ def process_batch(
             message,
             on_retry=queue.schedule_retry,
             on_dlq=queue.dead_letter,
+            on_reschedule=queue.enqueue,
         )
         results.append(result)
     return results

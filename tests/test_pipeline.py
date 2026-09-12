@@ -159,6 +159,33 @@ class DocumentPipelineTests(unittest.TestCase):
                 queue,
             )
 
+        with self.assertRaises(ValidationError):
+            upload_document(
+                {
+                    "case_id": 7,
+                    "document_id": "DOC-008",
+                    "content": b"data",
+                    "metadata": {"content_type": "application/pdf"},
+                },
+                queue,
+            )
+
+    def test_upload_document_copies_metadata_payload(self) -> None:
+        queue = ServiceBusQueue()
+        metadata = {"content_type": "application/pdf"}
+        upload_document(
+            {
+                "case_id": "CASE-009",
+                "document_id": "DOC-009",
+                "content": b"data",
+                "metadata": metadata,
+            },
+            queue,
+        )
+        metadata["content_type"] = "text/plain"
+        queued = queue.dequeue_batch(1)[0]
+        self.assertEqual(queued.metadata["content_type"], "application/pdf")
+
 
 if __name__ == "__main__":
     unittest.main()
