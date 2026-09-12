@@ -1,4 +1,4 @@
-import { BlobServiceClient, BlobSASPermissions, StorageSharedKeyCredential, generateBlobSASQueryParameters } from "@azure/storage-blob";
+import { BlobServiceClient, BlobSASPermissions, SASProtocol, StorageSharedKeyCredential, generateBlobSASQueryParameters } from "@azure/storage-blob";
 import { config } from "../config.js";
 
 function parseConnectionString(cs: string) {
@@ -20,7 +20,7 @@ export function createUploadSas(blobName: string, minutes = 20): string {
     permissions: BlobSASPermissions.parse("cw"),
     startsOn,
     expiresOn,
-    protocol: "https"
+    protocol: SASProtocol.Https
   }, credential).toString();
   return `${blobService.getContainerClient(config.UPLOAD_CONTAINER).getBlockBlobClient(blobName).url}?${sas}`;
 }
