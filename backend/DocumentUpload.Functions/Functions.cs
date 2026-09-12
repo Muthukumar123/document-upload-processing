@@ -141,7 +141,7 @@ public class UploadFunctions
         var sender = sb.CreateSender(Settings.Queue);
         var msg = new DocumentMessage(input.BatchId, input.DocumentId, blobName, props.Value.VersionId, input.Sha256);
         await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(msg, new JsonSerializerOptions(JsonSerializerDefaults.Web))) { MessageId = input.DocumentId.ToString() });
-        await using (var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='QUEUED',UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d", c))
+        await using (var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='QUEUED',UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d AND Status='UPLOADED'", c))
         {
             cmd.Parameters.AddWithValue("@d", input.DocumentId);
             await cmd.ExecuteNonQueryAsync();
@@ -200,7 +200,7 @@ public class ProcessingFunctions
         {
             var claimed = await Db.Tx(async (c, tx) =>
             {
-                await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='PROCESSING',AttemptCount=AttemptCount+1,UpdatedAt=SYSUTCDATETIME() OUTPUT inserted.DocumentId WHERE DocumentId=@d AND Status IN ('QUEUED','FAILED','PROCESSING')", c, tx);
+                await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='PROCESSING',AttemptCount=AttemptCount+1,UpdatedAt=SYSUTCDATETIME() OUTPUT inserted.DocumentId WHERE DocumentId=@d AND Status IN ('UPLOADED','QUEUED','FAILED','PROCESSING')", c, tx);
                 cmd.Parameters.AddWithValue("@d", m.DocumentId);
                 var v = await cmd.ExecuteScalarAsync();
                 if (v is null) return false;
