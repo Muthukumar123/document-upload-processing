@@ -112,9 +112,9 @@ public class UploadFunctions
     {
         await using var c = new SqlConnection(Settings.Sql); await c.OpenAsync();
         await using var cmd = new SqlCommand(@"SELECT b.BatchId,b.TotalDocuments,b.Status,b.CreatedAt,
-SUM(CASE WHEN d.Status IN ('COMPLETED','PARTIAL_SUCCESS') THEN 1 ELSE 0 END) CompletedDocuments,
-SUM(CASE WHEN d.Status='FAILED' THEN 1 ELSE 0 END) FailedDocuments,
-SUM(CASE WHEN d.Status='DEAD_LETTERED' THEN 1 ELSE 0 END) DeadLetteredDocuments,
+COUNT(DISTINCT CASE WHEN d.Status IN ('COMPLETED','PARTIAL_SUCCESS') THEN d.DocumentId END) CompletedDocuments,
+COUNT(DISTINCT CASE WHEN d.Status='FAILED' THEN d.DocumentId END) FailedDocuments,
+COUNT(DISTINCT CASE WHEN d.Status='DEAD_LETTERED' THEN d.DocumentId END) DeadLetteredDocuments,
 COUNT(ca.CaseId) TotalCases
 FROM dbo.UploadBatch b LEFT JOIN dbo.DocumentUpload d ON b.BatchId=d.BatchId LEFT JOIN dbo.[Case] ca ON d.DocumentId=ca.DocumentId
 WHERE b.BatchId=@b GROUP BY b.BatchId,b.TotalDocuments,b.Status,b.CreatedAt", c);
