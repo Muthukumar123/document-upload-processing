@@ -7,7 +7,7 @@ Production-oriented Azure implementation for batch document ingestion and Excel-
 - React batch upload UI and one-click **153-document / 153-row / 10-column** stress scenario
 - Direct-to-Blob uploads with short-lived SAS and SHA-256 integrity verification
 - Azure Service Bus queue with duplicate detection, PeekLock processing, bounded concurrency and DLQ
-- Node.js 20 Azure Functions for upload orchestration, processing, reconciliation and a mock validation API
+- Node.js 22 Azure Functions for upload orchestration, processing, reconciliation and a mock validation API
 - Azure SQL for batch/document/case state, reference comparison, audit and document-case associations
 - Idempotent case creation and safe message replay
 - Blob versioning so workers process the exact uploaded version
