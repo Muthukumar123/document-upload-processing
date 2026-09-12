@@ -4,7 +4,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, TypedDict
 
 
 class ValidationError(Exception):
@@ -26,6 +26,13 @@ class DocumentMessage:
     @property
     def idempotency_key(self) -> str:
         return f"{self.case_id}:{self.document_id}"
+
+
+class UploadRequest(TypedDict):
+    case_id: str
+    document_id: str
+    content: bytes
+    metadata: dict[str, str]
 
 
 class ValidationService:
@@ -309,7 +316,7 @@ class BatchProcessor:
         return "processed"
 
 
-def upload_document(request: dict, queue: ServiceBusQueue) -> DocumentMessage:
+def upload_document(request: UploadRequest, queue: ServiceBusQueue) -> DocumentMessage:
     """Validate upload input and enqueue a document for batch processing."""
     required_fields = ("case_id", "document_id", "content", "metadata")
     missing_fields = [field for field in required_fields if field not in request]
