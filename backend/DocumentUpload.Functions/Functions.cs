@@ -35,6 +35,26 @@ public static class Settings
     public static string ValidationBatchUrl => Environment.GetEnvironmentVariable("VALIDATION_BATCH_API_URL") ?? ValidationUrl.Replace("/mock/validate", "/mock/validate-batch", StringComparison.OrdinalIgnoreCase);
     public static int ValidationBatchSize => int.TryParse(Environment.GetEnvironmentVariable("VALIDATION_BATCH_SIZE"), out var v) && v > 0 ? Math.Min(v, 500) : 200;
     public static long MaxFileBytes => long.TryParse(Environment.GetEnvironmentVariable("MAX_FILE_BYTES"), out var v) ? v : 55L * 1024 * 1024;
+    public static bool UseInProcessValidation
+    {
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable("USE_IN_PROCESS_VALIDATION");
+            if (bool.TryParse(configured, out var value)) return value;
+            return ValidationBatchUrl.Contains("/api/mock/validate-batch", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+}
+
+public static class AzureClients
+{
+    private static readonly Lazy<BlobServiceClient> BlobService = new(() => new BlobServiceClient(Settings.Storage));
+    private static readonly Lazy<BlobContainerClient> UploadContainerClient = new(() => BlobService.Value.GetBlobContainerClient(Settings.Container));
+    private static readonly Lazy<ServiceBusClient> ServiceBus = new(() => new ServiceBusClient(Settings.ServiceBus));
+    private static readonly Lazy<ServiceBusSender> DocumentSenderClient = new(() => ServiceBus.Value.CreateSender(Settings.Queue));
+
+    public static BlobContainerClient UploadContainer => UploadContainerClient.Value;
+    public static ServiceBusSender DocumentSender => DocumentSenderClient.Value;
 }
 
 public static class Db
@@ -60,10 +80,12 @@ public static class Db
 
 public class UploadFunctions
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     [Function("PrepareUpload")]
     public async Task<HttpResponseData> Prepare([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "uploads/prepare")] HttpRequestData req)
     {
-        var body = await JsonSerializer.DeserializeAsync<PrepareRequest>(req.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var body = await JsonSerializer.DeserializeAsync<PrepareRequest>(req.Body, JsonOptions);
         if (body?.Files is null || body.Files.Count is < 1 or > 200 || body.Files.Any(f => string.IsNullOrWhiteSpace(f.Name) || f.Size <= 0 || f.Size > Settings.MaxFileBytes))
             return await Json(req, HttpStatusCode.BadRequest, new { error = "Invalid file list" });
 
@@ -92,11 +114,10 @@ public class UploadFunctions
             return true;
         });
 
-        var container = new BlobServiceClient(Settings.Storage).GetBlobContainerClient(Settings.Container);
         var responseDocs = docs.Select(d =>
         {
             var blobName = $"{batchId}/{d.id}/{Safe(d.file.Name)}";
-            var blob = container.GetBlobClient(blobName);
+            var blob = AzureClients.UploadContainer.GetBlobClient(blobName);
             var sas = blob.GenerateSasUri(BlobSasPermissions.Create | BlobSasPermissions.Write, DateTimeOffset.UtcNow.AddMinutes(20));
             return new { documentId = d.id, fileName = d.file.Name, uploadUrl = sas.ToString() };
         });
@@ -106,7 +127,7 @@ public class UploadFunctions
     [Function("CompleteUpload")]
     public async Task<HttpResponseData> Complete([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "uploads/complete")] HttpRequestData req)
     {
-        var input = await JsonSerializer.DeserializeAsync<CompleteRequest>(req.Body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var input = await JsonSerializer.DeserializeAsync<CompleteRequest>(req.Body, JsonOptions);
         if (input is null || input.Sha256.Length != 64) return await Json(req, HttpStatusCode.BadRequest, new { error = "Invalid request" });
 
         await using var c = new SqlConnection(Settings.Sql);
@@ -124,29 +145,42 @@ public class UploadFunctions
                 status = r.GetString(1);
             }
         }
+
         if (blobName is null) return await Json(req, HttpStatusCode.NotFound, new { error = "Document not found" });
         if (status is "QUEUED" or "PROCESSING" or "COMPLETED" or "PARTIAL_SUCCESS") return await Json(req, HttpStatusCode.OK, new { status, idempotent = true });
 
-        var blob = new BlobServiceClient(Settings.Storage).GetBlobContainerClient(Settings.Container).GetBlobClient(blobName);
+        var blob = AzureClients.UploadContainer.GetBlobClient(blobName);
         var props = await blob.GetPropertiesAsync();
-        await using (var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Sha256=@h,BlobVersionId=@v,Status='UPLOADED',UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d", c))
+        await using (var cmd = new SqlCommand(@"UPDATE dbo.DocumentUpload
+SET Sha256=@h,BlobVersionId=@v,Status='UPLOADED',UpdatedAt=SYSUTCDATETIME()
+OUTPUT inserted.Status
+WHERE DocumentId=@d AND BatchId=@b AND Status IN ('PREPARED','UPLOADED')", c))
         {
             cmd.Parameters.AddWithValue("@h", input.Sha256);
             cmd.Parameters.AddWithValue("@v", (object?)props.Value.VersionId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@d", input.DocumentId);
-            await cmd.ExecuteNonQueryAsync();
+            cmd.Parameters.AddWithValue("@b", input.BatchId);
+            var updated = await cmd.ExecuteScalarAsync();
+            if (updated is null)
+            {
+                var current = await ReadDocumentStatus(c, input.BatchId, input.DocumentId);
+                return await Json(req, HttpStatusCode.OK, new { status = current ?? "UNKNOWN", idempotent = true });
+            }
         }
 
-        await using var sb = new ServiceBusClient(Settings.ServiceBus);
-        var sender = sb.CreateSender(Settings.Queue);
         var msg = new DocumentMessage(input.BatchId, input.DocumentId, blobName, props.Value.VersionId, input.Sha256);
-        await sender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(msg, new JsonSerializerOptions(JsonSerializerDefaults.Web))) { MessageId = input.DocumentId.ToString() });
+        await AzureClients.DocumentSender.SendMessageAsync(new ServiceBusMessage(JsonSerializer.Serialize(msg, JsonOptions)) { MessageId = input.DocumentId.ToString() });
+
+        int queued;
         await using (var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='QUEUED',UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d AND Status='UPLOADED'", c))
         {
             cmd.Parameters.AddWithValue("@d", input.DocumentId);
-            await cmd.ExecuteNonQueryAsync();
+            queued = await cmd.ExecuteNonQueryAsync();
         }
-        return await Json(req, HttpStatusCode.Accepted, new { status = "QUEUED" });
+
+        if (queued == 1) return await Json(req, HttpStatusCode.Accepted, new { status = "QUEUED" });
+        var actualStatus = await ReadDocumentStatus(c, input.BatchId, input.DocumentId);
+        return await Json(req, HttpStatusCode.Accepted, new { status = actualStatus ?? "PROCESSING" });
     }
 
     [Function("BatchStatus")]
@@ -154,13 +188,44 @@ public class UploadFunctions
     {
         await using var c = new SqlConnection(Settings.Sql);
         await c.OpenAsync();
-        await using var cmd = new SqlCommand(@"SELECT b.BatchId,b.TotalDocuments,b.Status,b.CreatedAt,
-COUNT(DISTINCT CASE WHEN d.Status IN ('COMPLETED','PARTIAL_SUCCESS') THEN d.DocumentId END) CompletedDocuments,
-COUNT(DISTINCT CASE WHEN d.Status='FAILED' THEN d.DocumentId END) FailedDocuments,
-COUNT(DISTINCT CASE WHEN d.Status='DEAD_LETTERED' THEN d.DocumentId END) DeadLetteredDocuments,
-COUNT(ca.CaseId) TotalCases
-FROM dbo.UploadBatch b LEFT JOIN dbo.DocumentUpload d ON b.BatchId=d.BatchId LEFT JOIN dbo.[Case] ca ON d.DocumentId=ca.DocumentId
-WHERE b.BatchId=@b GROUP BY b.BatchId,b.TotalDocuments,b.Status,b.CreatedAt", c);
+        await using var cmd = new SqlCommand(@"
+;WITH DocumentState AS (
+    SELECT
+        BatchId,
+        SUM(CASE WHEN Status IN ('COMPLETED','PARTIAL_SUCCESS') THEN 1 ELSE 0 END) CompletedDocuments,
+        SUM(CASE WHEN Status='PARTIAL_SUCCESS' THEN 1 ELSE 0 END) PartialDocuments,
+        SUM(CASE WHEN Status='FAILED' THEN 1 ELSE 0 END) FailedDocuments,
+        SUM(CASE WHEN Status='DEAD_LETTERED' THEN 1 ELSE 0 END) DeadLetteredDocuments,
+        SUM(CASE WHEN Status <> 'PREPARED' THEN 1 ELSE 0 END) StartedDocuments
+    FROM dbo.DocumentUpload
+    WHERE BatchId=@b
+    GROUP BY BatchId
+),
+CaseState AS (
+    SELECT d.BatchId,COUNT_BIG(ca.CaseId) TotalCases
+    FROM dbo.DocumentUpload d
+    LEFT JOIN dbo.[Case] ca ON ca.DocumentId=d.DocumentId
+    WHERE d.BatchId=@b
+    GROUP BY d.BatchId
+)
+SELECT
+    b.BatchId,
+    b.TotalDocuments,
+    CASE
+        WHEN COALESCE(ds.CompletedDocuments,0)+COALESCE(ds.FailedDocuments,0)+COALESCE(ds.DeadLetteredDocuments,0)=b.TotalDocuments
+            THEN CASE WHEN COALESCE(ds.PartialDocuments,0)+COALESCE(ds.FailedDocuments,0)+COALESCE(ds.DeadLetteredDocuments,0)>0 THEN 'PARTIAL_SUCCESS' ELSE 'COMPLETED' END
+        WHEN COALESCE(ds.StartedDocuments,0)>0 THEN 'PROCESSING'
+        ELSE 'UPLOADING'
+    END Status,
+    b.CreatedAt,
+    COALESCE(ds.CompletedDocuments,0) CompletedDocuments,
+    COALESCE(ds.FailedDocuments,0) FailedDocuments,
+    COALESCE(ds.DeadLetteredDocuments,0) DeadLetteredDocuments,
+    COALESCE(cs.TotalCases,0) TotalCases
+FROM dbo.UploadBatch b
+LEFT JOIN DocumentState ds ON ds.BatchId=b.BatchId
+LEFT JOIN CaseState cs ON cs.BatchId=b.BatchId
+WHERE b.BatchId=@b", c);
         cmd.Parameters.AddWithValue("@b", batchId);
         await using var r = await cmd.ExecuteReaderAsync();
         if (!await r.ReadAsync()) return await Json(req, HttpStatusCode.NotFound, new { error = "Batch not found" });
@@ -175,6 +240,14 @@ WHERE b.BatchId=@b GROUP BY b.BatchId,b.TotalDocuments,b.Status,b.CreatedAt", c)
             deadLetteredDocuments = Convert.ToInt32(r.GetValue(6)),
             totalCases = Convert.ToInt32(r.GetValue(7))
         });
+    }
+
+    private static async Task<string?> ReadDocumentStatus(SqlConnection c, Guid batchId, Guid documentId)
+    {
+        await using var cmd = new SqlCommand("SELECT Status FROM dbo.DocumentUpload WHERE DocumentId=@d AND BatchId=@b", c);
+        cmd.Parameters.AddWithValue("@d", documentId);
+        cmd.Parameters.AddWithValue("@b", batchId);
+        return (string?)await cmd.ExecuteScalarAsync();
     }
 
     private static string Safe(string s) => string.Concat(s.Select(ch => char.IsLetterOrDigit(ch) || ".-_".Contains(ch) ? ch : '_'));
@@ -198,24 +271,25 @@ public class ProcessingFunctions
         var m = JsonSerializer.Deserialize<DocumentMessage>(message.Body, JsonOptions) ?? throw new InvalidOperationException("Invalid message");
         try
         {
-            var claimed = await Db.Tx(async (c, tx) =>
+            var attemptCount = await Db.Tx(async (c, tx) =>
             {
-                await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='PROCESSING',AttemptCount=AttemptCount+1,UpdatedAt=SYSUTCDATETIME() OUTPUT inserted.DocumentId WHERE DocumentId=@d AND Status IN ('UPLOADED','QUEUED','FAILED','PROCESSING')", c, tx);
+                await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='PROCESSING',AttemptCount=AttemptCount+1,UpdatedAt=SYSUTCDATETIME() OUTPUT inserted.AttemptCount WHERE DocumentId=@d AND Status IN ('UPLOADED','QUEUED','FAILED','PROCESSING')", c, tx);
                 cmd.Parameters.AddWithValue("@d", m.DocumentId);
                 var v = await cmd.ExecuteScalarAsync();
-                if (v is null) return false;
+                if (v is null) return 0;
                 await using var audit = new SqlCommand("INSERT dbo.AuditEvent(DocumentId,EventType) VALUES(@d,'PROCESSING_STARTED')", c, tx);
                 audit.Parameters.AddWithValue("@d", m.DocumentId);
                 await audit.ExecuteNonQueryAsync();
-                return true;
+                return Convert.ToInt32(v);
             });
-            if (!claimed)
+
+            if (attemptCount == 0)
             {
                 await actions.CompleteMessageAsync(message);
                 return;
             }
 
-            var blob = new BlobServiceClient(Settings.Storage).GetBlobContainerClient(Settings.Container).GetBlobClient(m.BlobName);
+            var blob = AzureClients.UploadContainer.GetBlobClient(m.BlobName);
             if (!string.IsNullOrWhiteSpace(m.VersionId)) blob = blob.WithVersion(m.VersionId);
             await using var ms = new MemoryStream();
             await blob.DownloadToAsync(ms);
@@ -224,10 +298,18 @@ public class ProcessingFunctions
             if (!actual.Equals(m.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("SHA256 checksum mismatch");
 
             var rows = ParseRows(bytes, m.DocumentId);
-            var finishedCaseIds = await LoadFinishedCaseIds(m.DocumentId);
-            var pending = rows.Where(r => !finishedCaseIds.Contains(r.CaseId)).ToList();
-            var processed = new List<ProcessedRow>();
+            List<ParsedRow> pending;
+            if (attemptCount == 1)
+            {
+                pending = rows;
+            }
+            else
+            {
+                var finishedCaseIds = await LoadFinishedCaseIds(m.DocumentId);
+                pending = rows.Where(r => !finishedCaseIds.Contains(r.CaseId)).ToList();
+            }
 
+            var processed = new List<ProcessedRow>();
             if (pending.Count > 0)
             {
                 var references = await LoadReferenceData(pending.Select(r => r.Values[0]).Distinct(StringComparer.OrdinalIgnoreCase));
@@ -253,8 +335,8 @@ public class ProcessingFunctions
                 }).ToList();
             }
 
-            var finalStatus = await PersistRowsAndFinalize(m.DocumentId, m.BatchId, processed);
-            log.LogInformation("Processed document {DocumentId}: {RowCount} rows, {PendingCount} new rows, final status {FinalStatus}", m.DocumentId, rows.Count, pending.Count, finalStatus);
+            var finalStatus = await PersistRowsAndFinalize(m.DocumentId, processed, attemptCount > 1);
+            log.LogInformation("Processed document {DocumentId}: {RowCount} rows, {PendingCount} new rows, attempt {AttemptCount}, final status {FinalStatus}", m.DocumentId, rows.Count, pending.Count, attemptCount, finalStatus);
             await actions.CompleteMessageAsync(message);
         }
         catch (Exception ex)
@@ -280,7 +362,7 @@ public class ProcessingFunctions
     public async Task<HttpResponseData> Validate([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "mock/validate")] HttpRequestData req)
     {
         var input = await JsonSerializer.DeserializeAsync<ValidationRequest>(req.Body, JsonOptions);
-        var valid = input is not null && input.Values.Length == 10 && input.Values[0].Length > 0 && input.CompareMatch;
+        var valid = input is not null && ValidateLocally(input);
         var r = req.CreateResponse(HttpStatusCode.OK);
         await r.WriteAsJsonAsync(new ValidationResponse(valid, valid ? null : "Missing key or SQL comparison failed"));
         return r;
@@ -297,11 +379,7 @@ public class ProcessingFunctions
             return bad;
         }
 
-        var results = inputs.Select(input =>
-        {
-            var valid = input.Values.Length == 10 && input.Values[0].Length > 0 && input.CompareMatch;
-            return new ValidationBatchItem(input.CaseId, valid, valid ? null : "Missing key or SQL comparison failed");
-        }).ToList();
+        var results = inputs.Select(ToValidationResult).ToList();
         var r = req.CreateResponse(HttpStatusCode.OK);
         await r.WriteAsJsonAsync(results);
         return r;
@@ -312,8 +390,30 @@ public class ProcessingFunctions
     {
         await using var c = new SqlConnection(Settings.Sql);
         await c.OpenAsync();
-        await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='FAILED',LastError='Reconciliation marked stuck processing',UpdatedAt=SYSUTCDATETIME() WHERE Status='PROCESSING' AND UpdatedAt<DATEADD(minute,-30,SYSUTCDATETIME())", c);
-        await cmd.ExecuteNonQueryAsync();
+        await using (var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status='FAILED',LastError='Reconciliation marked stuck processing',UpdatedAt=SYSUTCDATETIME() WHERE Status='PROCESSING' AND UpdatedAt<DATEADD(minute,-30,SYSUTCDATETIME())", c))
+        {
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        await using var batch = new SqlCommand(@"
+;WITH BatchState AS (
+    SELECT
+        b.BatchId,
+        CASE
+            WHEN SUM(CASE WHEN d.Status NOT IN ('COMPLETED','PARTIAL_SUCCESS','FAILED','DEAD_LETTERED') THEN 1 ELSE 0 END)>0 THEN 'PROCESSING'
+            WHEN SUM(CASE WHEN d.Status IN ('PARTIAL_SUCCESS','FAILED','DEAD_LETTERED') THEN 1 ELSE 0 END)>0 THEN 'PARTIAL_SUCCESS'
+            ELSE 'COMPLETED'
+        END Status
+    FROM dbo.UploadBatch b
+    JOIN dbo.DocumentUpload d ON d.BatchId=b.BatchId
+    GROUP BY b.BatchId
+)
+UPDATE b
+SET Status=s.Status,UpdatedAt=SYSUTCDATETIME()
+FROM dbo.UploadBatch b
+JOIN BatchState s ON s.BatchId=b.BatchId
+WHERE b.Status<>s.Status", c);
+        await batch.ExecuteNonQueryAsync();
     }
 
     private static List<ParsedRow> ParseRows(byte[] bytes, Guid documentId)
@@ -362,6 +462,9 @@ public class ProcessingFunctions
 
     private static async Task<Dictionary<Guid, ValidationBatchItem>> ValidateInBatches(List<ValidationRequest> requests)
     {
+        if (Settings.UseInProcessValidation)
+            return requests.Select(ToValidationResult).ToDictionary(v => v.CaseId);
+
         var result = new Dictionary<Guid, ValidationBatchItem>();
         foreach (var chunk in requests.Chunk(Settings.ValidationBatchSize))
         {
@@ -374,7 +477,15 @@ public class ProcessingFunctions
         return result;
     }
 
-    private static async Task<string> PersistRowsAndFinalize(Guid documentId, Guid batchId, List<ProcessedRow> rows)
+    private static ValidationBatchItem ToValidationResult(ValidationRequest input)
+    {
+        var valid = ValidateLocally(input);
+        return new ValidationBatchItem(input.CaseId, valid, valid ? null : "Missing key or SQL comparison failed");
+    }
+
+    private static bool ValidateLocally(ValidationRequest input) => input.Values.Length == 10 && input.Values[0].Length > 0 && input.CompareMatch;
+
+    private static async Task<string> PersistRowsAndFinalize(Guid documentId, List<ProcessedRow> rows, bool isRetry)
     {
         return await Db.Tx(async (c, tx) =>
         {
@@ -420,27 +531,19 @@ WHERE NOT EXISTS(SELECT 1 FROM dbo.DocumentCaseLink L WHERE L.DocumentId=@docume
                 await merge.ExecuteNonQueryAsync();
             }
 
-            bool hasInvalid;
-            await using (var invalid = new SqlCommand("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.[Case] WHERE DocumentId=@d AND Status='INVALID') THEN 1 ELSE 0 END", c, tx))
+            var hasInvalid = rows.Any(r => r.Status == "INVALID");
+            if (isRetry && !hasInvalid)
             {
+                await using var invalid = new SqlCommand("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.[Case] WHERE DocumentId=@d AND Status='INVALID') THEN 1 ELSE 0 END", c, tx);
                 invalid.Parameters.AddWithValue("@d", documentId);
                 hasInvalid = Convert.ToInt32(await invalid.ExecuteScalarAsync()) == 1;
             }
 
             var finalStatus = hasInvalid ? "PARTIAL_SUCCESS" : "COMPLETED";
-            await using (var finalize = new SqlCommand("UPDATE dbo.DocumentUpload SET Status=@s,CompletedAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d; INSERT dbo.AuditEvent(DocumentId,EventType) VALUES(@d,@s)", c, tx))
-            {
-                finalize.Parameters.AddWithValue("@s", finalStatus);
-                finalize.Parameters.AddWithValue("@d", documentId);
-                await finalize.ExecuteNonQueryAsync();
-            }
-
-            await using (var batch = new SqlCommand("UPDATE b SET Status=CASE WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status NOT IN ('COMPLETED','PARTIAL_SUCCESS','FAILED','DEAD_LETTERED')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status IN ('FAILED','DEAD_LETTERED','PARTIAL_SUCCESS')) THEN 'PARTIAL_SUCCESS' ELSE 'COMPLETED' END,UpdatedAt=SYSUTCDATETIME() FROM dbo.UploadBatch b WHERE BatchId=@b", c, tx))
-            {
-                batch.Parameters.AddWithValue("@b", batchId);
-                await batch.ExecuteNonQueryAsync();
-            }
-
+            await using var finalize = new SqlCommand("UPDATE dbo.DocumentUpload SET Status=@s,CompletedAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d; INSERT dbo.AuditEvent(DocumentId,EventType) VALUES(@d,@s)", c, tx);
+            finalize.Parameters.AddWithValue("@s", finalStatus);
+            finalize.Parameters.AddWithValue("@d", documentId);
+            await finalize.ExecuteNonQueryAsync();
             return finalStatus;
         });
     }
