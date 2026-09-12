@@ -10,13 +10,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
-      - run: npm run lint
-      - run: npm run build
-      - run: npm run test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore and build .NET backend
+        run: dotnet build backend/DocumentUpload.Functions/DocumentUpload.Functions.csproj --configuration Release
+      - name: Build React frontend
+        run: npm install --prefix frontend && npm run build --prefix frontend
+      - name: Run Python tests
+        run: pip install -r tests/requirements.txt && pytest -q tests/test_generator.py
       - name: Validate Bicep
         run: az bicep build --file infra/main.bicep
       - uses: actions/upload-artifact@v4
@@ -24,4 +32,4 @@ jobs:
           name: application-build
           path: |
             frontend/dist
-            api/dist
+            backend/DocumentUpload.Functions/bin/Release/net8.0
