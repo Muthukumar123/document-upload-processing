@@ -52,6 +52,8 @@ See [`docs/project-conclusion.md`](docs/project-conclusion.md) for the complete 
 
 See [`docs/enterprise-architecture-and-benchmarking.md`](docs/enterprise-architecture-and-benchmarking.md) for the detailed architecture assessment, benchmarking methodology, benchmark-maturity evaluation, enterprise-standard gap analysis, SLO guidance, telemetry requirements, stress/soak/failure testing plan, and server-capacity scenarios.
 
+See [`docs/application-and-infrastructure-architecture.md`](docs/application-and-infrastructure-architecture.md) for the **comprehensive application and Azure infrastructure architecture**, including Mermaid component diagrams, upload/processing/retry/recovery/deployment sequence diagrams, SQL ER model, state transitions, Service Bus concurrency model, security topology, observability, CI/CD architecture, 500+ document scaling model, transactional-outbox target and production evolution.
+
 ## Enterprise benchmark classification
 
 The architecture is **enterprise-aligned**, and the current measurements are a **strong end-to-end engineering/architecture benchmark**. They should not yet be described as a complete enterprise production performance certification.
@@ -83,6 +85,30 @@ React SPA
 ```
 
 The Service Bus queue is the processing boundary and backpressure mechanism. The application sends **one message per document**, never one message per row.
+
+### Detailed architecture diagrams
+
+The comprehensive architecture document contains GitHub-rendered Mermaid diagrams for:
+
+- system context and logical application components;
+- upload preparation/direct Blob upload/completion flow;
+- Service Bus document-processing sequence;
+- retry and DLQ behavior;
+- stale-processing recovery watchdog;
+- batch-status derivation;
+- document state transitions;
+- SQL entity relationships;
+- Azure infrastructure topology;
+- current network/security topology;
+- per-instance Service Bus concurrency and scale-out behavior;
+- validation modes;
+- GitHub Actions deployment sequence;
+- observability topology;
+- future 500+ document logical batching;
+- recommended transactional outbox;
+- production target architecture.
+
+See [`docs/application-and-infrastructure-architecture.md`](docs/application-and-infrastructure-architecture.md).
 
 ## Current Azure development/test configuration
 
@@ -143,7 +169,8 @@ The latest run uploaded and queued all 150 documents in **15.31 seconds**. This 
 - `tests/` Python tests and Azure load-test harness
 - `sql/` durable Azure SQL schema
 - `infra/` Azure Bicep
-- `docs/architecture.md` runtime architecture and reliability model
+- `docs/architecture.md` concise runtime architecture and reliability model
+- `docs/application-and-infrastructure-architecture.md` comprehensive application/infrastructure architecture and sequence diagrams
 - `docs/benchmark-workload-model.md` authoritative benchmark document/row/case definitions and calculations
 - `docs/project-conclusion.md` full project report, facts/figures, scaling projections and conclusion
 - `docs/enterprise-architecture-and-benchmarking.md` enterprise architecture and benchmark maturity assessment
