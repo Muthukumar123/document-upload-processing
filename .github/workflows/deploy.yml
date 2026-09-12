@@ -19,11 +19,21 @@ jobs:
     environment: azure-dev
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Build and test
-        run: npm install && npm run build && npm run test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build backend
+        run: dotnet publish backend/DocumentUpload.Functions/DocumentUpload.Functions.csproj -c Release -o backend/publish
+      - name: Build frontend
+        run: npm install --prefix frontend && npm run build --prefix frontend
+      - name: Python tests
+        run: pip install -r tests/requirements.txt && pytest -q tests/test_generator.py
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -55,25 +65,33 @@ jobs:
           trap cleanup EXIT
           docker run --rm -e SQLCMDPASSWORD="$SQL_ADMIN_PASSWORD" -v "$PWD/sql:/scripts:ro" mcr.microsoft.com/mssql-tools /opt/mssql-tools18/bin/sqlcmd -S "${{ steps.infra.outputs.sqlserver }}.database.windows.net" -d "${{ steps.infra.outputs.sqldb }}" -U docadmin -N -i /scripts/schema.sql
       - name: Package Functions
-        shell: bash
-        run: |
-          cd api
-          npm install --omit=dev --workspaces=false
-          zip -qr ../function.zip dist host.json package.json node_modules
+        run: cd backend/publish && zip -qr ../../function.zip .
       - name: Deploy Functions
         run: az functionapp deployment source config-zip -g "${{ inputs.resourceGroup }}" -n "${{ steps.infra.outputs.function }}" --src function.zip
-      - name: Build React for deployed API
+      - name: Rebuild React for deployed API
         env:
           VITE_API_BASE_URL: ${{ steps.infra.outputs.api }}
-        run: npm run build -w frontend
+        run: npm run build --prefix frontend
       - name: Publish React site
         shell: bash
         run: |
           ACCOUNT_KEY=$(az storage account keys list -g "${{ inputs.resourceGroup }}" -n "${{ steps.infra.outputs.storage }}" --query '[0].value' -o tsv)
           az storage blob upload-batch --account-name "${{ steps.infra.outputs.storage }}" --account-key "$ACCOUNT_KEY" -s frontend/dist -d '$web' --overwrite
+      - name: Deployment smoke test
+        run: |
+          python - <<'PY'
+          import httpx, os
+          url = os.environ['API'] + '/mock/validate'
+          r = httpx.post(url, json={'caseId':'00000000-0000-0000-0000-000000000001','rowNumber':1,'values':['FUND','VALUE','','','','','','','',''],'compareMatch':True}, timeout=30)
+          r.raise_for_status()
+          print(r.json())
+          PY
+        env:
+          API: ${{ steps.infra.outputs.api }}
       - name: Deployment summary
         run: |
           echo "### Document Upload deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "- Web: ${{ steps.infra.outputs.site }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- API: ${{ steps.infra.outputs.api }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Function App: ${{ steps.infra.outputs.function }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Load test: python tests/load_test.py --base-url '${{ steps.infra.outputs.api }}' --documents 153" >> "$GITHUB_STEP_SUMMARY"
