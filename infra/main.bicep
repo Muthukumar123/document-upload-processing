@@ -96,14 +96,14 @@ resource fn 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: plan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'NODE|20'
+      linuxFxVersion: 'NODE|22'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       cors: { allowedOrigins: corsOrigins, supportCredentials: false }
       appSettings: [
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
         { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~20' }
+        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
         { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${listKeys(storage.id,storage.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}' }
         { name: 'SERVICE_BUS_CONNECTION', value: listKeys('${sb.id}/AuthorizationRules/RootManageSharedAccessKey','2024-01-01').primaryConnectionString }
         { name: 'SERVICE_BUS_QUEUE', value: queue.name }
