@@ -1,7 +1,8 @@
 targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param envName string = 'dev'
-@secure() param sqlAdminPassword string
+@secure()
+param sqlAdminPassword string
 param sqlAdminLogin string = 'docadmin'
 param allowedWebOrigins array = ['http://localhost:5173']
 
@@ -31,12 +32,12 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   kind: 'StorageV2'
   properties: { minimumTlsVersion: 'TLS1_2', allowBlobPublicAccess: false, supportsHttpsTrafficOnly: true, accessTier: 'Hot' }
 }
-resource blob 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+resource blob 'Microsoft.Storage/storageAccounts/blobServices@2026-04-01' = {
   parent: storage
   name: 'default'
   properties: {
     isVersioningEnabled: true
-    staticWebsite: { enabled: true, indexDocument: 'index.html', error404Document: 'index.html' }
+    staticWebsite: { enabled: true, indexDocument: 'index.html', errorDocument404Path: 'index.html' }
     cors: { corsRules: [{ allowedOrigins: corsOrigins, allowedMethods: ['PUT','GET','OPTIONS'], allowedHeaders: ['*'], exposedHeaders: ['ETag','x-ms-version-id'], maxAgeInSeconds: 3600 }] }
   }
 }
