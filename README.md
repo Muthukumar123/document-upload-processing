@@ -20,6 +20,14 @@ Compared with the original 153-document baseline of 168.53 seconds, normalized c
 
 See [`docs/project-conclusion.md`](docs/project-conclusion.md) for the complete project write-up, benchmark history, current Azure configuration, projected results for larger server configurations, production-hardening items, and final conclusion.
 
+See [`docs/enterprise-architecture-and-benchmarking.md`](docs/enterprise-architecture-and-benchmarking.md) for the detailed architecture assessment, benchmarking methodology, benchmark-maturity evaluation, enterprise-standard gap analysis, SLO guidance, telemetry requirements, stress/soak/failure testing plan, and server-capacity scenarios.
+
+## Enterprise benchmark classification
+
+The architecture is **enterprise-aligned**, and the current measurements are a **strong end-to-end engineering/architecture benchmark**. They should not yet be described as a complete enterprise production performance certification.
+
+The current test already validates the real Azure path, exact persisted case count, zero failures/DLQ, comparative before/after performance, and concurrent independent batches. Full enterprise performance certification would additionally require repeated statistical runs, p50/p95/p99 latency, cold-vs-warm separation, stage-level server timings, infrastructure utilization telemetry, sustained/stress/spike/soak workloads, controlled fault injection, formal SLO acceptance criteria, production-scale workload validation, and cost/performance analysis.
+
 ## Technology standards
 
 - **React + Vite**: browser user interface only
@@ -63,7 +71,7 @@ The Service Bus queue is the processing boundary and backpressure mechanism. The
 - maximum 200 files in one prepare request
 - Application Insights + Log Analytics
 
-The current configuration is intentionally cost-sensitive. More expensive SQL/Function configurations are discussed as **projections, not measured guarantees**, in the project conclusion document.
+The current configuration is intentionally cost-sensitive. More expensive SQL/Function configurations are discussed as **projections, not measured guarantees**, in the project conclusion and enterprise benchmarking documents.
 
 ## Reliability and processing characteristics
 
@@ -105,6 +113,7 @@ The latest run uploaded and queued all 150 documents in **15.31 seconds**. This 
 - `infra/` Azure Bicep
 - `docs/architecture.md` runtime architecture and reliability model
 - `docs/project-conclusion.md` full project report, facts/figures, scaling projections and conclusion
+- `docs/enterprise-architecture-and-benchmarking.md` enterprise architecture and benchmark maturity assessment
 - `.github/workflows/` CI and Azure deployment workflow
 
 ## End-to-end load test
@@ -130,4 +139,4 @@ Use `.github/workflows/deploy.yml`. Configure the GitHub environment `azure-dev`
 
 ## Production note
 
-The current deployment profile is a validated development/test architecture, not a final internet-facing production security profile. Production hardening should include Entra authentication, managed identity for SQL and Service Bus, least-privilege RBAC, private networking where required, stronger secret handling, operational alerts, failure-mode testing, and a transactional outbox for the strongest SQL-to-Service-Bus publication guarantee.
+The current deployment profile is a validated development/test architecture, not a final internet-facing production security profile. Production hardening should include Entra authentication, managed identity for SQL and Service Bus, least-privilege RBAC, private networking where required, stronger secret handling, operational alerts, failure-mode testing, a global multi-instance concurrency policy, and a transactional outbox for the strongest SQL-to-Service-Bus publication guarantee.
