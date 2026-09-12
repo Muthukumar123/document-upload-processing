@@ -250,7 +250,6 @@ class BatchProcessor:
         if not self.repository.acquire_processing_lock(message.idempotency_key):
             if message.attempt >= self.max_retries:
                 self.repository.upsert_case(message.case_id, "failed", message.document_id)
-                self.repository.mark_processed(message.idempotency_key)
                 self.repository.add_audit_event(
                     message.case_id,
                     message.document_id,
@@ -289,7 +288,6 @@ class BatchProcessor:
         except TransientProcessingError as exc:
             if message.attempt >= self.max_retries:
                 self.repository.upsert_case(message.case_id, "failed", message.document_id)
-                self.repository.mark_processed(message.idempotency_key)
                 self.repository.add_audit_event(
                     message.case_id,
                     message.document_id,
