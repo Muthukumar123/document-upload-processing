@@ -97,18 +97,18 @@ resource fn 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: plan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'NODE|22'
+      linuxFxVersion: 'DOTNET-ISOLATED|8.0'
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       cors: { allowedOrigins: corsOrigins, supportCredentials: false }
       appSettings: [
         { name: 'FUNCTIONS_EXTENSION_VERSION', value: '~4' }
-        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'node' }
-        { name: 'WEBSITE_NODE_DEFAULT_VERSION', value: '~22' }
+        { name: 'FUNCTIONS_WORKER_RUNTIME', value: 'dotnet-isolated' }
         { name: 'AzureWebJobsStorage', value: 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${listKeys(storage.id,storage.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}' }
         { name: 'SERVICE_BUS_CONNECTION', value: listKeys('${sb.id}/AuthorizationRules/RootManageSharedAccessKey','2024-01-01').primaryConnectionString }
         { name: 'SERVICE_BUS_QUEUE', value: queue.name }
         { name: 'UPLOAD_CONTAINER', value: incoming.name }
+        { name: 'MAX_FILE_BYTES', value: '57671680' }
         { name: 'SQL_CONNECTION_STRING', value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDb.name};Persist Security Info=False;User ID=${sqlAdminLogin};Password=${sqlAdminPassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Max Pool Size=15;' }
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
         { name: 'VALIDATION_API_URL', value: 'https://${functionName}.azurewebsites.net/api/mock/validate' }
