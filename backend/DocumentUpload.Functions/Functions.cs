@@ -226,6 +226,7 @@ public class ProcessingFunctions
             var rows = ParseRows(bytes, m.DocumentId);
             var finishedCaseIds = await LoadFinishedCaseIds(m.DocumentId);
             var pending = rows.Where(r => !finishedCaseIds.Contains(r.CaseId)).ToList();
+            var processed = new List<ProcessedRow>();
 
             if (pending.Count > 0)
             {
@@ -238,7 +239,7 @@ public class ProcessingFunctions
                 }).ToList();
 
                 var validationResults = await ValidateInBatches(requests);
-                var processed = requests.Select(v =>
+                processed = requests.Select(v =>
                 {
                     if (!validationResults.TryGetValue(v.CaseId, out var validation)) throw new InvalidOperationException($"Validation result missing for case {v.CaseId}");
                     return new ProcessedRow(
@@ -250,30 +251,10 @@ public class ProcessingFunctions
                         JsonSerializer.Serialize(new ValidationResponse(validation.Valid, validation.Reason), JsonOptions),
                         validation.Valid ? "COMPLETED" : "INVALID");
                 }).ToList();
-
-                await PersistRows(m.DocumentId, processed);
             }
 
-            var hasInvalid = await HasInvalidCases(m.DocumentId);
-            var finalStatus = hasInvalid ? "PARTIAL_SUCCESS" : "COMPLETED";
-            await Db.Tx(async (c, tx) =>
-            {
-                await using var cmd = new SqlCommand("UPDATE dbo.DocumentUpload SET Status=@s,CompletedAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d; INSERT dbo.AuditEvent(DocumentId,EventType) VALUES(@d,@s)", c, tx);
-                cmd.Parameters.AddWithValue("@s", finalStatus);
-                cmd.Parameters.AddWithValue("@d", m.DocumentId);
-                await cmd.ExecuteNonQueryAsync();
-                return true;
-            });
-
-            await using (var c = new SqlConnection(Settings.Sql))
-            {
-                await c.OpenAsync();
-                await using var cmd = new SqlCommand("UPDATE b SET Status=CASE WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status NOT IN ('COMPLETED','PARTIAL_SUCCESS','FAILED','DEAD_LETTERED')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status IN ('FAILED','DEAD_LETTERED','PARTIAL_SUCCESS')) THEN 'PARTIAL_SUCCESS' ELSE 'COMPLETED' END,UpdatedAt=SYSUTCDATETIME() FROM dbo.UploadBatch b WHERE BatchId=@b", c);
-                cmd.Parameters.AddWithValue("@b", m.BatchId);
-                await cmd.ExecuteNonQueryAsync();
-            }
-
-            log.LogInformation("Processed document {DocumentId}: {RowCount} rows, {PendingCount} new rows", m.DocumentId, rows.Count, pending.Count);
+            var finalStatus = await PersistRowsAndFinalize(m.DocumentId, m.BatchId, processed);
+            log.LogInformation("Processed document {DocumentId}: {RowCount} rows, {PendingCount} new rows, final status {FinalStatus}", m.DocumentId, rows.Count, pending.Count, finalStatus);
             await actions.CompleteMessageAsync(message);
         }
         catch (Exception ex)
@@ -393,12 +374,13 @@ public class ProcessingFunctions
         return result;
     }
 
-    private static async Task PersistRows(Guid documentId, List<ProcessedRow> rows)
+    private static async Task<string> PersistRowsAndFinalize(Guid documentId, Guid batchId, List<ProcessedRow> rows)
     {
-        if (rows.Count == 0) return;
-        await Db.Tx(async (c, tx) =>
+        return await Db.Tx(async (c, tx) =>
         {
-            await using (var create = new SqlCommand(@"CREATE TABLE #ProcessedCase(
+            if (rows.Count > 0)
+            {
+                await using (var create = new SqlCommand(@"CREATE TABLE #ProcessedCase(
 CaseId uniqueidentifier NOT NULL,
 RowNumber int NOT NULL,
 ExternalKey nvarchar(128) NOT NULL,
@@ -406,27 +388,27 @@ PayloadJson nvarchar(max) NOT NULL,
 CompareMatch bit NOT NULL,
 ValidationJson nvarchar(max) NOT NULL,
 Status varchar(32) NOT NULL);", c, tx))
-            {
-                await create.ExecuteNonQueryAsync();
-            }
+                {
+                    await create.ExecuteNonQueryAsync();
+                }
 
-            var table = new DataTable();
-            table.Columns.Add("CaseId", typeof(Guid));
-            table.Columns.Add("RowNumber", typeof(int));
-            table.Columns.Add("ExternalKey", typeof(string));
-            table.Columns.Add("PayloadJson", typeof(string));
-            table.Columns.Add("CompareMatch", typeof(bool));
-            table.Columns.Add("ValidationJson", typeof(string));
-            table.Columns.Add("Status", typeof(string));
-            foreach (var row in rows) table.Rows.Add(row.CaseId, row.RowNumber, row.ExternalKey, row.PayloadJson, row.CompareMatch, row.ValidationJson, row.Status);
+                var table = new DataTable();
+                table.Columns.Add("CaseId", typeof(Guid));
+                table.Columns.Add("RowNumber", typeof(int));
+                table.Columns.Add("ExternalKey", typeof(string));
+                table.Columns.Add("PayloadJson", typeof(string));
+                table.Columns.Add("CompareMatch", typeof(bool));
+                table.Columns.Add("ValidationJson", typeof(string));
+                table.Columns.Add("Status", typeof(string));
+                foreach (var row in rows) table.Rows.Add(row.CaseId, row.RowNumber, row.ExternalKey, row.PayloadJson, row.CompareMatch, row.ValidationJson, row.Status);
 
-            using (var bulk = new SqlBulkCopy(c, SqlBulkCopyOptions.Default, tx) { DestinationTableName = "#ProcessedCase", BatchSize = rows.Count })
-            {
-                foreach (DataColumn column in table.Columns) bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
-                await bulk.WriteToServerAsync(table);
-            }
+                using (var bulk = new SqlBulkCopy(c, SqlBulkCopyOptions.Default, tx) { DestinationTableName = "#ProcessedCase", BatchSize = rows.Count })
+                {
+                    foreach (DataColumn column in table.Columns) bulk.ColumnMappings.Add(column.ColumnName, column.ColumnName);
+                    await bulk.WriteToServerAsync(table);
+                }
 
-            await using var merge = new SqlCommand(@"MERGE dbo.[Case] AS T
+                await using var merge = new SqlCommand(@"MERGE dbo.[Case] AS T
 USING #ProcessedCase AS S ON T.CaseId=S.CaseId
 WHEN MATCHED THEN UPDATE SET PayloadJson=S.PayloadJson,CompareMatch=S.CompareMatch,ValidationJson=S.ValidationJson,Status=S.Status,UpdatedAt=SYSUTCDATETIME()
 WHEN NOT MATCHED THEN INSERT(CaseId,DocumentId,RowNumber,ExternalKey,PayloadJson,CompareMatch,ValidationJson,Status)
@@ -434,19 +416,33 @@ VALUES(S.CaseId,@documentId,S.RowNumber,S.ExternalKey,S.PayloadJson,S.CompareMat
 INSERT dbo.DocumentCaseLink(DocumentId,CaseId)
 SELECT @documentId,S.CaseId FROM #ProcessedCase S
 WHERE NOT EXISTS(SELECT 1 FROM dbo.DocumentCaseLink L WHERE L.DocumentId=@documentId AND L.CaseId=S.CaseId);", c, tx);
-            merge.Parameters.AddWithValue("@documentId", documentId);
-            await merge.ExecuteNonQueryAsync();
-            return true;
-        });
-    }
+                merge.Parameters.AddWithValue("@documentId", documentId);
+                await merge.ExecuteNonQueryAsync();
+            }
 
-    private static async Task<bool> HasInvalidCases(Guid documentId)
-    {
-        await using var c = new SqlConnection(Settings.Sql);
-        await c.OpenAsync();
-        await using var cmd = new SqlCommand("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.[Case] WHERE DocumentId=@d AND Status='INVALID') THEN 1 ELSE 0 END", c);
-        cmd.Parameters.AddWithValue("@d", documentId);
-        return Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 1;
+            bool hasInvalid;
+            await using (var invalid = new SqlCommand("SELECT CASE WHEN EXISTS(SELECT 1 FROM dbo.[Case] WHERE DocumentId=@d AND Status='INVALID') THEN 1 ELSE 0 END", c, tx))
+            {
+                invalid.Parameters.AddWithValue("@d", documentId);
+                hasInvalid = Convert.ToInt32(await invalid.ExecuteScalarAsync()) == 1;
+            }
+
+            var finalStatus = hasInvalid ? "PARTIAL_SUCCESS" : "COMPLETED";
+            await using (var finalize = new SqlCommand("UPDATE dbo.DocumentUpload SET Status=@s,CompletedAt=SYSUTCDATETIME(),UpdatedAt=SYSUTCDATETIME() WHERE DocumentId=@d; INSERT dbo.AuditEvent(DocumentId,EventType) VALUES(@d,@s)", c, tx))
+            {
+                finalize.Parameters.AddWithValue("@s", finalStatus);
+                finalize.Parameters.AddWithValue("@d", documentId);
+                await finalize.ExecuteNonQueryAsync();
+            }
+
+            await using (var batch = new SqlCommand("UPDATE b SET Status=CASE WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status NOT IN ('COMPLETED','PARTIAL_SUCCESS','FAILED','DEAD_LETTERED')) THEN 'PROCESSING' WHEN EXISTS(SELECT 1 FROM dbo.DocumentUpload d WHERE d.BatchId=b.BatchId AND d.Status IN ('FAILED','DEAD_LETTERED','PARTIAL_SUCCESS')) THEN 'PARTIAL_SUCCESS' ELSE 'COMPLETED' END,UpdatedAt=SYSUTCDATETIME() FROM dbo.UploadBatch b WHERE BatchId=@b", c, tx))
+            {
+                batch.Parameters.AddWithValue("@b", batchId);
+                await batch.ExecuteNonQueryAsync();
+            }
+
+            return finalStatus;
+        });
     }
 
     private static Guid DeterministicCaseId(Guid documentId, int row)
