@@ -9,7 +9,7 @@ on:
       location:
         description: Azure region
         required: true
-        default: westeurope
+        default: eastus2
 permissions:
   id-token: write
   contents: read
