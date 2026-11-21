@@ -8,7 +8,21 @@ This product addresses real Indian FMCG distributor workflows found in the Badri
 
 Open [demo.html](demo.html) in a browser to review the self-contained, interactive **visual workflow demonstrator**. It stores only synthetic data in your browser and does not call any service.
 
-The independently tested **FastAPI + SQLite** working MVP is delivered separately to the product owner as a downloadable ZIP in the ChatGPT project. It includes the actual backend endpoints, role-sensitive screens and six passing transaction tests. To bring the tested project into this branch, copy the ZIP contents under this directory, replacing this browser-only demo with its integrated app/static frontend.
+The **integrated, locally tested FastAPI + SQLite MVP** is now included in this branch under `app/main.py` and `app/static/`, with six transaction tests in `tests/test_workflows.py`. The separately supplied ZIP contains the same tested pilot. `demo.html` is an optional no-server walkthrough; the real pilot's browser UI runs with its FastAPI server.
+
+## Run integrated local pilot
+
+```bash
+cd products/badri-tradeflow
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+DEMO_MODE=1 uvicorn app.main:app --host 127.0.0.1 --port 8000
+# Visit http://127.0.0.1:8000
+# Run tests separately: python -m pytest -q
+```
+
+**Never run `DEMO_MODE=1` on a public network.** It enables a local demo user selector only, with no trusted production identity. The integrated app includes manually reviewed invoice uploads and simulated extraction fixtures; it has no OCR service.
 
 ## Business workflow
 
@@ -32,7 +46,7 @@ Charges exclude applicable GST; extra OCR page processing should have fair-use q
 
 ## Production requirements
 
-This branch is a demo and **does not have** Azure multi-tenant deployment, OIDC authentication, secure customer onboarding, actual PDF OCR, IRP/e-invoice validation, WhatsApp delivery, offline synchronization, live payment confirmation, payment gateway subscription collection, or production-grade financial accounting. Never enter real invoices, GST identifiers or customer details into this mock.
+This branch is a functional local pilot and **does not have** Azure multi-tenant deployment, OIDC authentication, secure customer onboarding, actual PDF OCR, IRP/e-invoice validation, WhatsApp delivery, offline synchronization, live payment confirmation, payment gateway subscription collection, or production-grade financial accounting. Never enter real invoices, GST identifiers or customer details into this mock.
 
 Recommended build path: adapt the existing repository's Azure document upload components for invoice ingestion and validation. Implement a separate product domain and tenant data boundary; do not reuse unrelated document-processing case records. Security testing, data retention, backups and operational controls are gates before a public launch.
 
