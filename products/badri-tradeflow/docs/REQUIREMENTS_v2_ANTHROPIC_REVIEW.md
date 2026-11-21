@@ -998,3 +998,140 @@ Mark: ○ = circled serial, ✓ = ticked/struck serial.
 | 19 | Livoia (F) | 690 | ○ | |
 | 20 | Sri Krishna S/M | 4,268† | ○ | G/P |
 | 21 | Malar (F) | 591 | ✓ | |
+| 22 | Syed Peer Maligai | 914 | ✓ | |
+| 23 | Vinayaga Dept (Than) | 4,385 | ✓ | |
+| 24 | Kovai Lala | 1,274 | ○ | HC-1000 |
+| 25 | Shanmuga (F) | 3,427 | ✓ | |
+| 26 | Naveen S/M | 7,962 | ○ | |
+| 27 | Esu Dept | 4,748 | ✓ | |
+| 28 | Ganga (F) | 4,861 | ○ | collection sheet 4,867 |
+| 29 | Kavi Pharmacy | 2,635 | ○ | |
+| 30 | Amman (F) (OKR) | — | ✓ | value struck |
+| 31 | Sri Lakshmi S/M | 35,227† | ○ | large; confirm |
+| 32 | Iyyappa (F) | 1,152 | ✓ | |
+| 33 | Elango Maligai | 2,562 | ○ | G/P |
+| 34 | Jeevan S/M | 1,430 | ○ | |
+| 35 | Kanagavalli Store | 3,024 | ○ | collection sheet 3,004 |
+| 36 | Monesh S/M | 2,431† | ✓ | |
+| 37 | Mini Mart | 3,179 | ✓ | |
+| 38 | Janani Department | 3,114 | ✓ | |
+| 39 | Sree Nee Super Market | 2,316 | ○ | |
+| 40 | Aara Super Market | 4,505 | ○ | |
+| 41 | Vinayaga Department | 18,113† | ○ | large; confirm |
+| 42 | Balasi Dept | 10,294 | ✓ | |
+| 43 | Lakshmi Maligai | 134 | ○ | |
+| 44 | SP Muthu (F) | 1,952 | ○ | |
+| 45 | AKS Maligai | 1,337 | ✓ | |
+| 46 | Priyan S/M | 628 | ✓ | |
+| | **Lines (44 values)** | **1,66,041** | | written total **1,66,040** |
+
+Paper notes: legend "Paid – ✓, G/P – ○, Dam – ✗"; pencil "169892" at row 51; "Ant Rob No – 1st" (row 59); "SEN ELO Gel – 20 Ish" (row 80).
+
+### A.2 Credit/debit/denomination sheet — R. Santhosh, 14/11/2026
+
+**Credit** (sheet row → shop → amount → delivery row): 1 Angalamman S/M 3,679 (11) · 2 Livein (F) 690 (19) · 3 Naveen S/M 7,962 (26) · 4 Ganga (F) 4,867 (28) · 5 Kavi Pharmacy 2,635 (29) · 6 Lakshmi S/M 35,227 (31) · 7 Jeevan S/M 1,430 (34) · 8 Kanagavalli Store 3,004† (35) · 9 Vinayaga Dept 18,113 (41) · 10 Lakshmi Maligai 134 (43) · 11 SP Muthu 1,952 (44) · 12 RK Medical (Vasi) 1,470 (6) · 13 Dhanshika Maligai 1,750 (7) · 28 Elango Maligai 2,562 (33) · 29 Om Muruga (F) 3,630 (13) · 30 Kovai Lala Bakery 274 (24) · 31 Sri Krishna Dept 4,268 (20) · 32 Santhosh Store 7,792 (18) · 33 Angalamman Maligai 1,139 (9) · 34 SRM Maligai 3,355 (3) · 35 Sree Nee S/M 2,316 (39) · 36 Aara S/M 4,505 (40).
+Line sum 1,12,754; written 1,12,774 (ties with row 8 = 3,024). Pencil "116767" across rows 20–21.
+
+**Debit** (shop, amount, bill no.): Saravana Maligai 4,020 #5993 · Pachamman Dept 5,111 #6192 · Murugan Dept 2,242 #6202 · Naveen S/M 1,892 #5807 · Naveen S/M 9,166 #5654 · Jeevan Dept 1,037 #5466 · Thangam (F)† 2,200 #5463 · Kavi Pharmacy 1,000 #6031 · Kanagavalli Store 1,500 #6018 · Amman (F) (Ahu) 1,425 #6212 · Amman (F) (Ahu) 2,647 #5478 · Livein 536 #6194 · Lakshmi Maligai 640 #6217 · SP Muthu 1,051 #6218 · Priyan S/M 1,165 #6221. **Total 35,632 (ties).** After the total: Kanagavalli Store 197 (#6018); Lakshmi Dept 1,86?† (#6014, struck).
+
+**Others:** Priyan S/M 282 + Others 50 = 332. "-532" beside the name.
+
+**Denominations:** 500 × 116 = 58,000 · 200 × 39 = 7,800 · 100 × 213 = 21,300 · 50 × 17 = 850 · 20 × 24 = 480 · 10 × 11 = 110 · coins 46 · **total 88,586 (ties).**
+
+### A.3 Daily collection receipt — Vijay, Bommidi, 12/1?/2026
+
+| # | Bill | Shop | Amount |
+|---|---|---|---:|
+| 1 | 6296 | Kumar Maligai | 1,376 |
+| 2 | 6163 | Kuriji Store | 2,168 |
+| 3 | 5730 | Kuriji Store | 948 |
+| 4 | 3444 | Siva Sakthi Maligai | 5,000 |
+| 5 | 6298 | Sakthi (F) | 3,184 |
+| 6 | 6112 | Raja (F) | 11,847 |
+| 7 | 6168 | Velmurugan Maligai | 238 / 230† |
+| 8 | 6175 | Sakthi Maligai | 5,089 |
+| 9 | 6113 | Sadosa (F) | 2,079 |
+| 10 | 6096 | ARK Store | 1,131 |
+| 11 | 6319 | KSS Maligai | 1,126 |
+| | | Written subtotal | 34,178 |
+| 17 | 6317 | RM | 13,994 |
+| 18 | 6301 | Bala S/M | 3,528 |
+
+Denominations: 500 × 39 = 19,500 · 200 × 37 = 7,400 · 100 × 69 = 6,900 · 50 × 6 = 300 · 20 × 2 = 40 · 10 × 1 = 10 · unlabelled 22 · **total 34,172.** TOTAL box blank.
+
+### A.4 PA Traders A000770 — 02/11/2026, Credit Bill, due 02/11/2026
+
+| # | Product | HSN | Qty | Free | MRP | Rate (incl. 5%) | Before tax | Amount |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | KOPIKO CAPPU 12X240JAR | 17049020 | 10 | | 240.00 | 2,269.52 | 21,614.48 | 22,695.20 |
+| 2 | CHOKI CHOKI 12J x 115PCS x4.5G | 18069020 | 6 | | 230.00 | 2,207.52 | 12,614.40 | 13,245.12 |
+| 3 | CHOKI STIX 12GBX 20 POUCH | 18069020 | 2 | | 200.00 | 1,797.00 | 3,422.86 | 3,594.00 |
+| 4 | CHOKI CHOKI XL PACK 12X 40PCS | 18069020 | 1 | | 200.00 | 2,000.00 | 1,904.76 | 2,000.00 |
+| 5 | KOPIKO CAPPU 48 PCx 46PCSx3.5GM | 17049020 | 1 | | 50.00 | 1,815.40 | 1,728.95 | 1,815.40 |
+| 6 | KOPIKO CAPPU 32 POUCH X 100PCSX 3.5G | 17049020 | 1 | | 100.00 | 2,572.08 | 2,449.60 | 2,572.08 |
+| 7 | MALKIEST CHEESE FAMILY 10X60PCS | 19059020 | 3 | | 45.00 | 2,042.46 | 5,835.60 | 6,127.38 |
+| 8 | KOP MALKIEST DC FAMILKY 60X144GM | 19059020 | 2 | | 45.00 | 2,042.46 | 3,890.40 | 4,084.92 |
+| 9 | MALKIEST CAPPUCCINO 60X144GR | 19059020 | 1 | | 45.00 | 2,042.46 | 1,945.20 | 2,042.46 |
+| 10 | MALKIEST CHEESE FAMILY 60X144 FREE | 19059020 | 0 | 60 | 45.00 | 34.05 | 0.00 | 0.00 |
+
+Sub Total 55,406.25 · Discount 200.00 · Taxable 55,215.74 · SGST 1,380.41 · CGST 1,380.41 · **Grand Total 57,977.00**. Items/Qty "10 / 87" (27 paid + 60 free). Terms: no returns; damage not taken back, 1% passed in margin. Handwritten: "entry done", circled "28", Tamil note.
+
+### A.5 Maha Enterprises ME0398 — 07/11/2026, e-invoice
+
+IRN e6b252957cc0f2a6e1cef654d24adc64c1b51acd1497e2f0ed3a21d1cfd13db6 · Ack 152627823817679 (07-Nov-2026 12:01).
+
+| # | Product | HSN | MRP | Qty | Rate | Scheme | GST | Amount | Cases (pen) |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 1 | DET ASL 60ML | 30049099 | 45.63 | 200 | 36.65 | 0.00 | 5% | 7,696.50 | 1 |
+| 2 | DET ASL 125ML | 30049099 | 91.33 | 96 | 73.36 | 0.00 | 5% | 7,394.68 | 1 |
+| 3 | HARPIC 450ML | 38089400 | 89.00 | 120 | 65.93 | 276.91 | 18% | 9,008.93 | 5 |
+| 4 | LYSOL DFC FLORAL 500ML+25% EXT | 38089400 | 129.00 | 18 | 95.56 | 60.20 | 18% | 1,958.66 | 1 |
+
+Gross 26,058.77 · round-off 0.23 · **Net 26,059.00** · 5% slab 14,372.56 (CGST/SGST 359.31 each) · 18% slab 9,294.57 (836.51 each). Handwritten "8 cls", "entry done".
+
+### A.6 Maha Enterprises MHHIN009140 — 10/11/2026 (page 1 only)
+
+PO PO3936511102026052805 (same as SO No.) · Terms of Payment "365" · Beat B.Mallapuram_Weekly_Monday · IRN blank.
+
+| Code | Product | Batch · expiry | UOM | Qty | Units | Rate | Scheme | GST | Taxable |
+|---|---|---|---:|---|---:|---:|---:|---:|---:|
+| 3051965 | DETOL,IN,LHW ORG 200ML-DLS175 | 305196567L-3 \| 305196568L-5 \| 305196570L-16 · 09/28 | 24 | 1CA 0EA | 24 | 73.34 | 3.50% 61.60 | 18% | 1,698.56 |
+| 3043858 | DETOL,IN,ORG SQUEZY 100MLX96 | BF6201-36 · 09/28 | 96 | 36EA | 36 | 25.93 | 2.00% 18.67 | 18% | 914.81 |
+| 3072868 | DETOL,IN,SAN 50ML ORG SRP | R6385-36 · 08/28 | 96 | 36EA | 36 | 25.93 | 5.00% 46.67 | 18% | 886.81 |
+| 3362892 | DETOL,IN,SOP COOL 150GPACKOF4 | WN678-30 · 10/28 | 30 | 1CA 0EA | 30 | 184.00 | 2.25% 124.20 | 5% | 5,395.80 |
+| 3051966 | DETTOL HW SKC 200ML-DLS175 | 305196610A-24 · 09/28 | 24 | 1CA 0EA | 24 | 73.34 | 3.50% 61.61 | 18% | 1,698.55 |
+| 3348376 | DETTOL LHW ORIGINAL PUMP 180MLB1G1 | 3348376103-24 · 09/28 | 24 | 1CA 0EA | 24 | 77.78 | 2.00% 37.33 | 18% | 1,829.39 |
+| 0273511 | DETTOL SANITISER 200MLX24 | R6359-6 · 08/28 | 24 | 6EA | 6 | 103.71 | 5.00% 31.11 | 18% | 591.15 |
+| 3037455 | ITCHG,IN,12 G | A2281-36 · 08/29 | 240 | 36EA | 36 | 51.63 | 0 | 5% | 1,858.68 |
+| 3342482 | MOOV,IN,12X10 GM PRC OF | A2301-120 · 02/29 | 240 | 120EA | 120 | 51.89 | 3.75% 233.50 | 5% | 5,993.30 |
+| 3342472 | MOOV,IN,CRM4G+25%FREEX736PROF | A2339-736 · 08/28 | 736 | 1CA 0EA | 736 | 11.45 | 0.75% 63.20 | 5% | 8,364.00 |
+| 3342491 | MOOV,IN,OINTMENT 20GM PRC OF | A2290-60 · 02/29 | 240 | 60EA | 60 | 93.86 | 3.75% 211.18 | 5% | 5,420.42 |
+| 3213167 | MOOV,IN,SPRAY 35GM P60 | B6074B5-12 · 08/29 | 60 | 12EA | 12 | 148.11 | 3.00% 53.32 | 5% | 1,724.00 |
+| 3282672 | STPSL,IN,ORANGE BLI JAR 288 | A2303-6 · 08/28 | 12 | 6EA | 6 | 641.03 | 7.50% 288.46 | 5% | 3,557.72 |
+| 3288447 | VEET CREAM PURE NORMAL 30G-144 PACK | WJ958-24 · 09/28 | 144 | 24EA | 24 | 85.19 | 5.25% 107.34 | 18% | 1,937.22 |
+| 3288443 | VEET,IN,CRM COOL 30GM-144 PK | WK580-24 · 09/28 | 144 | 24EA | 24 | 85.19 | 5.25% 107.34 | 18% | 1,937.22 |
+| 3288446 | VEET,IN,CRM SENS 30 GM-144 PK | WK283-24 · 09/28 | 144 | 24EA | 24 | 85.19 | 5.25% 107.34 | 18% | 1,937.22 |
+| 0211282 | COLIN TRG 500ML | WL569-25 · 09/28 | 25 | 1CA 0EA | 25 | 88.89 | 1.50% 33.33 | 18% | 2,188.92 |
+| 3178197 | HARPC,IN,HYG CIT 26GX24 | WG177-2 \| WK532-2 · 08/28, 09/28 | 24 | 4EA | 4 | 73.34 | 3.50% 10.26 | 18% | 283.10 |
+
+Page 1 taxable + GST = 52,695.09. Invoice total not visible.
+
+### A.7 Himalaya Wellness 5066110913 — 13/11/2026 (page 1 of 2)
+
+PO 73712827000029 · photo rotated 90° · "Continued in Page 2".
+
+| Code | Product | Batch | MFD → Exp | Qty | Rate | Scheme | Taxable | Pack |
+|---|---|---|---|---:|---:|---:|---:|---|
+| 7005328 | ANTI DANDRUFF TEA TREE SHAMPOO 340ML + ANTI DANDR | 992601409 | SEP-26 → AUG-29 | 12 | 271.08 | 110.07 | 3,142.89 | 1 X 12 |
+| 7005223 | ANTI-HAIR FALL BHRINGARAJA SHAMPOO 80ML | B992601565 | OCT-26 → SEP-29 | 48 | 49.35 | 80.16 | 2,288.64 | 1 X 48 |
+| 7006642 | DANDRUFF CONTROL ALOE VERA SHAMPOO 16N X 7ML | B532600718 | JUL-26 → JUN-28 | 180 | 24.98 | 152.83 | 4,343.57 | 3 X 60 |
+| 7006839 | GENTLE BABY POWDER 100G BUY 5 GET 1 FREE | 952601203 | AUG-26 → JUL-29 | 24 | 434.19 | 357.63 | 10,062.93 | 4 X 6 |
+| 7000157 | GENTLE BABY SHAMPOO 100 ML | B592601240 | SEP-26 → AUG-29 | 48 | 83.22 | 137.10 | 3,857.46 | 1 X 48 |
+| 7001180 | GENTLE BABY SOAP 125G | 272600533 | OCT-26 → SEP-29 | 120 | 72.35 | 298.00 | 8,384.00 | 2 X 60 |
+| 7006826 | GENTLE BABY SOAP 75G BUY 5 GET 1 FREE | 272600531 | OCT-26 → SEP-29 | 12 | 235.19 | 96.86 | 2,725.42 | 1 X 12 |
+| 7001176 | GENTLE BABY SOAP 75G | 272600519 | OCT-26 → SEP-29 | 72 | 47.04 | 116.24 | 3,270.64 | 1 X 72 |
+| 7006643 | HAIR FALL CONTROL BHRINGARAJA SHAMPOO 16N | B532600737 | JUL-26 → JUN-28 | 180 | 24.98 | (not printed) | 4,343.57 | 3 X 60 |
+
+CGST = SGST = 2.5% on every line. Page 1 taxable + GST = 44,540.10.
+
+> Supplier bank account numbers, phone numbers and staff names printed on these documents are deliberately left out of this guide. Store them only in the protected supplier master (FR-02).
