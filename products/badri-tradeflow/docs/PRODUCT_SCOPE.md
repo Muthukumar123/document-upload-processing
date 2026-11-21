@@ -47,6 +47,6 @@ Tenant, User, Role, Beat, Retailer, Supplier, Product, ProductAlias, PackConvers
 Responsive React UI -> authenticated API -> tenant authorization -> invoice ingestion/validation and core commerce services -> transactional data store + event/outbox + object storage. Azure document processing in the host repository is reusable at the ingestion boundary. Avoid assuming the host repository's Azure SQL case schema is a sufficient inventory ledger. Consider Azure SQL/PostgreSQL for relational stock/finance; evaluate Cosmos DB only with explicit partition/transaction modelling and measured cost. Prefer a PaaS-first cost-conscious rollout.
 
 ## Scope status
-The source ZIP supplied in the conversation contains a running local FastAPI + SQLite pilot with six passing functional tests. The GitHub demo.html file is a separate synthetic browser demonstration for immediate viewing and product walkthrough, not a copy of that integrated application.
+The GitHub branch now includes the running local FastAPI + SQLite pilot in app/, with six passing workflow tests in tests/. The ZIP supplied in this conversation is a separately downloadable copy of this pilot. The demo.html file is a distinct synthetic browser-only demonstration for quick product walkthrough.
 
 Excluded from pilot: genuine OCR/IRN/GSTN verification, offline device sync, bank connectors, official accounting compliance attestation, secure user provisioning, payment gateway billing, DR/SLO/observability and production Azure hardening.
